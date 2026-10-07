@@ -73,6 +73,8 @@ export interface DispatchTicket {
 export declare function collectCompletedDependencyOutputs(tasks: readonly TeamTask[], taskId: string, warn?: (message: string) => void): DependencyOutput[];
 /** Format completed-dependency outputs with per-item and total truncation. */
 export declare function formatDependencyOutputs(items: readonly DependencyOutput[]): string;
+/** Exported for the dispatch-guard regression test. */
+export declare function nextReadyTask(tasks: readonly TeamTask[], memberName: string): TeamTask | undefined;
 export declare function assignmentPrompt(ticket: DispatchTicket, stateDir: string, teamId: string): string;
 /** Install one scheduler and its member activity observer. */
 export declare function installTeamScheduler(ctx: Context, config: SchedulerConfig): TeamScheduler;
