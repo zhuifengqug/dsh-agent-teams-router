@@ -8,6 +8,8 @@
  * @module dsh-agent-teams/types
  */
 
+import type { TaskDifficulty, TaskRouteAuditEntry, TaskRouteLine, TaskRouteSource, TaskRouteStatus } from './router.ts'
+
 /** Task lifecycle statuses in progression order. */
 export type TaskStatus =
   | 'pending'
@@ -165,6 +167,51 @@ export interface TeamTask {
   coverageOf?: string[]
   /** Captain-only contract amendments, oldest first (see amendTaskContract). */
   revisions?: TaskRevision[]
+  /**
+   * Task difficulty tier. Missing means `medium`.
+   *
+   * Difficulty is the routing dimension: whoever dispatches a task may pick a
+   * tier instead of naming a model, and the model router turns that tier into a
+   * concrete provider/model/reasoning_effort.
+   */
+  difficulty?: TaskDifficulty
+  /** Free-text role as written by the captain or the user. Missing means `general`. */
+  role?: string
+  /** `role` after trim + whitespace collapsing + Unicode lowercasing. Part of the member reuse key. */
+  normalizedRole?: string
+  /**
+   * Optional **explicit** route request: provider/model/reasoning_effort.
+   *
+   * The user's hard route wins over everything; the captain's preference is
+   * used when valid and merely recorded as rejected when not. Absent means the
+   * task routes by difficulty.
+   */
+  route?: TaskRouteLine
+  /** Provenance of `route` when present: `user` (hard) or `captain` (preference). */
+  routeSource?: 'user' | 'captain'
+  /** Outcome of the last validation/resolution: only `resolved` may be dispatched. */
+  routeStatus?: TaskRouteStatus
+  /** Where the last successful resolution actually got the route from. */
+  routeResolvedSource?: TaskRouteSource
+  /**
+   * The concrete route the last successful resolution produced.
+   *
+   * Kept separate from `route` (which is the *request*): a task may carry no
+   * request at all and still resolve to a concrete route from its difficulty
+   * tier. Members freeze themselves from this value, not from the request.
+   */
+  resolvedRoute?: TaskRouteLine
+  /** Audit trail of the last resolution, oldest first. */
+  routeAudit?: TaskRouteAuditEntry[]
+  /**
+   * Why this task is waiting instead of running.
+   *
+   * Set when a task cannot be dispatched even though its route is fine — today
+   * only when the plan needs more members than the global `maxMembers` cap
+   * allows. The task keeps its resolved route: it is never downgraded and never
+   * given a different model, it simply queues.
+   */
+  queueReason?: string
   createdAt: number
   updatedAt: number
 }
@@ -195,6 +242,16 @@ export interface TeamMember {
   activeModel?: string
   /** Whether the fallback route is currently active. */
   fallbackActive?: boolean
+  /**
+   * Frozen member reuse key: `difficulty + normalizedRole + provider + model +
+   * reasoning_effort`. Two tasks that resolve to the same key must be served by
+   * the same member; a different key requires a separate member.
+   */
+  routeKey?: string
+  /** Difficulty this member was frozen for (part of `routeKey`). */
+  difficulty?: string
+  /** Normalized role this member was frozen for (part of `routeKey`). */
+  normalizedRole?: string
   joinedAt: number
   status: MemberStatus
   /** Execution admission is closed while a failed/pending handoff is drained. */

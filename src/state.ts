@@ -19,6 +19,7 @@ import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promise
 import { join } from 'node:path'
 import { TERMINAL_TASK_STATUSES, type TaskStatus, type TeamMember, type TeamMessage, type TeamProfileSnapshot, type TeamState, type TeamTask } from './types.ts'
 import { hasValidQualityTaskFields, isReviewPolicy, normalizeBlankOptionalTaskFields } from './quality-gates.ts'
+import { TASK_DIFFICULTIES, type TaskDifficulty } from './router.ts'
 
 export {
   amendTaskContract,
@@ -827,9 +828,51 @@ export function isTeamTask(value: unknown): value is TeamTask {
     && isOptionalString(value['handoffId'])
     && isOptionalString(value['handoffFromMemberId'])
     && (value['reassigning'] === undefined || typeof value['reassigning'] === 'boolean')
+    && isOptionalString(value['difficulty'])
+    && (value['difficulty'] === undefined || TASK_DIFFICULTIES.includes(value['difficulty'] as TaskDifficulty))
+    && isOptionalString(value['role'])
+    && isOptionalString(value['normalizedRole'])
+    && (value['route'] === undefined || isTaskRouteLine(value['route']))
+    && (value['resolvedRoute'] === undefined || isTaskRouteLine(value['resolvedRoute']))
+    && (value['routeSource'] === undefined || value['routeSource'] === 'user' || value['routeSource'] === 'captain')
+    && (value['routeStatus'] === undefined
+      || value['routeStatus'] === 'resolved'
+      || value['routeStatus'] === 'pending'
+      || value['routeStatus'] === 'blocked')
+    && (value['routeResolvedSource'] === undefined
+      || value['routeResolvedSource'] === 'user'
+      || value['routeResolvedSource'] === 'captain'
+      || value['routeResolvedSource'] === 'difficulty'
+      || value['routeResolvedSource'] === 'fallback'
+      || value['routeResolvedSource'] === 'none')
+    && (value['routeAudit'] === undefined || isTaskRouteAudit(value['routeAudit']))
+    && isOptionalString(value['queueReason'])
     && isFiniteNumber(value['createdAt'])
     && isFiniteNumber(value['updatedAt'])
     && hasValidQualityTaskFields(value)
+}
+
+/** One persisted route request: provider and model must both be non-empty. */
+function isTaskRouteLine(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  return typeof value['provider'] === 'string'
+    && value['provider'].trim() !== ''
+    && typeof value['model'] === 'string'
+    && value['model'].trim() !== ''
+    && typeof value['reasoning_effort'] === 'string'
+}
+
+/** Persisted audit entries; an unrecognized entry invalidates the list. */
+function isTaskRouteAudit(value: unknown): boolean {
+  if (!Array.isArray(value)) return false
+  return value.every((entry) => {
+    if (!isRecord(entry)) return false
+    return isFiniteNumber(entry['at'])
+      && typeof entry['step'] === 'string'
+      && typeof entry['outcome'] === 'string'
+      && typeof entry['detail'] === 'string'
+      && (entry['tier'] === undefined || typeof entry['tier'] === 'string')
+  })
 }
 
 /** Validate the full team record before it can participate in authorization. */

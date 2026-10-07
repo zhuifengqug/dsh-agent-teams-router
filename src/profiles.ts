@@ -10,6 +10,7 @@
  */
 
 import { CAPTAIN_KEY, sanitizeKey } from './state.ts'
+import { validateTaskRouteFields, type TaskDifficulty, type TaskRouteLine } from './router.ts'
 
 /** Hard cap on named profiles so the usage prompt cannot grow without bound. */
 export const MAX_TEAM_PROFILES = 16
@@ -22,7 +23,7 @@ const PROFILE_KEYS = ['description', 'protocol', 'executionPrompt', 'fallback', 
 const REVIEW_POLICY_KEYS = ['requirementsMinRounds', 'requirementsMaxRounds', 'codeMaxRounds', 'maxRepairAttempts', 'requiredReviewers'] as const
 const MEMBER_KEYS = ['name', 'role', 'provider', 'model', 'reasoning_effort', 'executionPrompt', 'fallback'] as const
 const FALLBACK_KEYS = ['provider', 'model'] as const
-const TASK_KEYS = ['id', 'subject', 'description', 'assignee', 'dependencies'] as const
+const TASK_KEYS = ['id', 'subject', 'description', 'assignee', 'dependencies', 'difficulty', 'role', 'provider', 'model', 'reasoning_effort'] as const
 
 /** One member row in a named team-profile template (unresolved). */
 export interface TeamModelFallbackConfig {
@@ -47,6 +48,12 @@ export interface TeamProfileTaskConfig {
   description?: string
   assignee?: string
   dependencies?: string[]
+  /** Routing intent for this seed task; absent fields take the defaults below. */
+  difficulty?: string
+  role?: string
+  provider?: string
+  model?: string
+  reasoning_effort?: string
 }
 
 /** One named team-profile template from plugin config. */
@@ -84,6 +91,15 @@ export interface NormalizedProfileTask {
   description?: string
   assignee?: string
   dependencies: string[]
+  /**
+   * Validated routing intent. `difficulty` / `role` / `normalizedRole` are
+   * always present (defaults `medium` / `general`); the explicit route stays
+   * optional and is a **captain preference** when present.
+   */
+  difficulty: TaskDifficulty
+  role: string
+  normalizedRole: string
+  route?: TaskRouteLine
   sourceIndex: number
 }
 
@@ -506,12 +522,33 @@ function normalizeTask(
     memberByName,
     memberByKey,
   )
+  // Routing intent. Difficulty/role always materialize (defaults medium/general)
+  // so every seeded task carries an explicit routing row; an illegal value is an
+  // error rather than a silent fallback.
+  const routing = validateTaskRouteFields({
+    difficulty: raw['difficulty'],
+    role: raw['role'],
+    route: raw['provider'] === undefined && raw['model'] === undefined && raw['reasoning_effort'] === undefined
+      ? undefined
+      : {
+          provider: raw['provider'],
+          model: raw['model'],
+          reasoning_effort: raw['reasoning_effort'],
+        },
+  })
+  if (!routing.ok) {
+    throw new Error(`profile "${profileName}" task "${id}": ${routing.errors.join('; ')}`)
+  }
   return omitUndefined({
     id,
     subject,
     description,
     assignee,
     dependencies,
+    difficulty: routing.fields.difficulty,
+    role: routing.fields.role,
+    normalizedRole: routing.fields.normalizedRole,
+    route: routing.fields.route,
     sourceIndex,
   })
 }

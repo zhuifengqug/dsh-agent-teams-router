@@ -363,6 +363,45 @@ export function apply(ctx: Context, config: Config): void {
           const dependencies = Array.isArray(payload['dependencies'])
             ? payload['dependencies'].filter((item): item is string => typeof item === 'string')
             : []
+          /**
+           * Task routing fields as edited by the **user** in the staged plan.
+           *
+           * A `provider`/`model` pair sent from this surface is a *hard* route
+           * (`routeSource: 'user'`): it outranks the captain's preference and
+           * blocks approval when unavailable. When the payload mentions no route
+           * key at all the stored route is left untouched, and both keys empty
+           * clear it.
+           */
+          const routeEdit = (): {
+            difficulty?: string | null
+            role?: string | null
+            route?: { provider: string; model: string; reasoning_effort: string } | null
+            routeSource?: 'user'
+          } => {
+            const edit: {
+              difficulty?: string | null
+              role?: string | null
+              route?: { provider: string; model: string; reasoning_effort: string } | null
+              routeSource?: 'user'
+            } = {}
+            if (typeof payload['difficulty'] === 'string' || payload['difficulty'] === null) {
+              edit.difficulty = payload['difficulty'] as string | null
+            }
+            if (typeof payload['role'] === 'string' || payload['role'] === null) {
+              edit.role = payload['role'] as string | null
+            }
+            const mentionsRoute = 'provider' in payload || 'model' in payload || 'reasoning_effort' in payload
+            if (mentionsRoute) {
+              const provider = typeof payload['provider'] === 'string' ? payload['provider'].trim() : ''
+              const model = typeof payload['model'] === 'string' ? payload['model'].trim() : ''
+              const reasoningEffort = typeof payload['reasoning_effort'] === 'string' ? payload['reasoning_effort'].trim() : ''
+              edit.route = provider === '' && model === ''
+                ? null
+                : { provider, model, reasoning_effort: reasoningEffort }
+              edit.routeSource = 'user'
+            }
+            return edit
+          }
           let mutation: StagedPlanMutation
           if (action === 'update_member') {
             if (typeof payload['memberName'] !== 'string'
@@ -396,6 +435,7 @@ export function apply(ctx: Context, config: Config): void {
               ...typeof payload['assignee'] === 'string' || payload['assignee'] === null
                 ? { assignee: payload['assignee'] as string | null }
                 : {},
+              ...routeEdit(),
             }
           } else if (action === 'add_task') {
             if (typeof payload['subject'] !== 'string') throw new Error('subject is required')
@@ -409,6 +449,7 @@ export function apply(ctx: Context, config: Config): void {
               ...typeof payload['assignee'] === 'string' || payload['assignee'] === null
                 ? { assignee: payload['assignee'] as string | null }
                 : {},
+              ...routeEdit(),
             }
           } else if (action === 'remove_task') {
             if (typeof payload['taskId'] !== 'string') throw new Error('taskId is required')

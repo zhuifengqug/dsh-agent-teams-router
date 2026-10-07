@@ -162,12 +162,62 @@ function formatTaskIds(ids: readonly string[], t: AgentTeamsTranslate): string {
   return ids.join(t('format.listSeparator'))
 }
 
+/** Locale keys naming the four difficulty tiers a task routing row may carry. */
+const TASK_DIFFICULTY_LABEL: Record<string, AgentTeamsLocaleKey> = {
+  low: 'task.difficulty.low',
+  medium: 'task.difficulty.medium',
+  high: 'task.difficulty.high',
+  max: 'task.difficulty.max',
+}
+
+/**
+ * Routing fields the activity snapshot carries on a task row.
+ *
+ * The routing values arrive on the same JSON payload as the rest of the task row
+ * and are declared on `ActivityTask` itself, so they are read directly.
+ */
+
+function taskDifficultyLabel(difficulty: string, t: AgentTeamsTranslate): string {
+  const key = TASK_DIFFICULTY_LABEL[difficulty]
+  return key === undefined ? difficulty : t(key)
+}
+
+/**
+ * Compact routing badge: a queued task waits on purpose, a blocked route needs
+ * a human, a pending route waits on the environment. `resolved` needs no badge.
+ */
+function taskRoutingBadgeKey(routing: ActivityTask): AgentTeamsLocaleKey | undefined {
+  if ((routing.queueReason ?? '') !== '') return 'task.route.queued'
+  if (routing.routeStatus === 'blocked') return 'task.route.badge.blocked'
+  if (routing.routeStatus === 'pending') return 'task.route.badge.pending'
+  return undefined
+}
+
+/** Long-form routing sentence for the task detail card. */
+function taskRoutingText(task: ActivityTask, t: AgentTeamsTranslate): string {
+  const routing = task
+  return [
+    routing.difficulty === undefined
+      ? undefined
+      : t('task.route.difficulty', { difficulty: taskDifficultyLabel(routing.difficulty, t) }),
+    routing.routeStatus === 'blocked'
+      ? t('task.route.status.blocked')
+      : routing.routeStatus === 'pending'
+        ? t('task.route.status.pending')
+        : undefined,
+  ].filter((part): part is string => part !== undefined).join(' · ')
+}
+
 function taskTitle(task: ActivityTask, model: string): string {
+  const routing = task
   const extras = [
     task.kind,
     task.round === undefined ? undefined : `r${task.round}`,
     task.verdict,
     model === '' ? undefined : model,
+    routing.difficulty === undefined ? undefined : `difficulty ${routing.difficulty}`,
+    routing.routeStatus === undefined ? undefined : `route ${routing.routeStatus}`,
+    routing.queueReason,
   ].filter((item): item is string => item !== undefined)
   return extras.length === 0 ? `${task.id} · ${task.subject}` : `${task.id} · ${task.subject} · ${extras.join(' · ')}`
 }
@@ -381,6 +431,9 @@ function DependencyMap({ tasks, members, t, discarded = false, workspace = false
     ?? tasks[0]!
   const detailTask = tasks.find((task) => task.id === focusedTaskId) ?? fallbackTask
   const detailModel = taskModelLabel(detailTask, members)
+  const detailRouting = detailTask
+  const detailQueueReason = detailRouting.queueReason ?? ''
+  const detailRoutingText = taskRoutingText(detailTask, t)
   const waitingOn = detailTask.dependencies.filter((dependency) => (
     tasks.find((task) => task.id === dependency)?.status !== 'completed'
   ))
@@ -411,6 +464,9 @@ function DependencyMap({ tasks, members, t, discarded = false, workspace = false
               </svg>}
               {layout.nodes.map(({ task, x, y }) => {
                 const model = taskModelLabel(task, members)
+                const routing = task
+                const queueReason = routing.queueReason ?? ''
+                const routingBadgeKey = taskRoutingBadgeKey(routing)
                 return (
                   <button
                     key={task.id}
@@ -422,6 +478,9 @@ function DependencyMap({ tasks, members, t, discarded = false, workspace = false
                     data-task-id={task.id}
                     data-state={discarded ? 'cancelled' : taskTone(task.state, task.status)}
                     data-task-model={model || undefined}
+                    data-difficulty={routing.difficulty}
+                    data-route-status={routing.routeStatus}
+                    data-queued={queueReason === '' ? undefined : true}
                     data-focused={related?.has(task.id) ?? false}
                     data-dimmed={related !== null && !related.has(task.id)}
                     aria-pressed={pinnedTaskId === task.id}
@@ -432,7 +491,18 @@ function DependencyMap({ tasks, members, t, discarded = false, workspace = false
                     onFocus={() => { setKeyboardTaskId(task.id) }}
                     onBlur={() => { setKeyboardTaskId(null) }}
                   >
-                    <span className={css.dagNodeHead}><span className={css.dagNodeDot} />{task.id}{workspace && <span className={css.dagOwner}>{task.assignee || t('task.assignee.unclaimed')}</span>}</span>
+                    <span className={css.dagNodeHead}>
+                      <span className={css.dagNodeDot} />{task.id}
+                      {routing.difficulty !== undefined && (
+                        <span className={css.dagOwner} data-routing-badge="difficulty" data-difficulty={routing.difficulty}>
+                          {taskDifficultyLabel(routing.difficulty, t)}
+                        </span>
+                      )}
+                      {routingBadgeKey !== undefined && (
+                        <span className={css.dagOwner} data-routing-badge={routingBadgeKey}>{t(routingBadgeKey)}</span>
+                      )}
+                      {workspace && <span className={css.dagOwner}>{task.assignee || t('task.assignee.unclaimed')}</span>}
+                    </span>
                     <span className={css.dagNodeLabel}>
                       {workspace ? task.subject : compactTaskLabel(task.subject)}
                     </span>
@@ -473,6 +543,20 @@ function DependencyMap({ tasks, members, t, discarded = false, workspace = false
               <span className={css.taskDetailModel} data-task-model={detailModel}>
                 {t('task.model', { model: detailModel })}
               </span>
+            )}
+            {detailRoutingText !== '' && (
+              <span
+                className={css.taskDetailMeta}
+                data-task-routing
+                data-difficulty={detailRouting.difficulty}
+                data-route-status={detailRouting.routeStatus}
+                data-route-source={detailRouting.routeSource}
+              >
+                {detailRoutingText}
+              </span>
+            )}
+            {detailQueueReason !== '' && (
+              <span className={css.taskDetailMeta} data-task-queue-reason>{detailQueueReason}</span>
             )}
             <span className={css.taskDetailMeta}>{dependents.length === 0
               ? t('task.detail.noDownstream')

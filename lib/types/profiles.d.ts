@@ -8,6 +8,7 @@
  *
  * @module dsh-agent-teams/profiles
  */
+import { type TaskDifficulty, type TaskRouteLine } from './router.ts';
 /** Hard cap on named profiles so the usage prompt cannot grow without bound. */
 export declare const MAX_TEAM_PROFILES = 16;
 /** Hard cap on seed tasks per profile. The software-delivery example has 13. */
@@ -35,6 +36,12 @@ export interface TeamProfileTaskConfig {
     description?: string;
     assignee?: string;
     dependencies?: string[];
+    /** Routing intent for this seed task; absent fields take the defaults below. */
+    difficulty?: string;
+    role?: string;
+    provider?: string;
+    model?: string;
+    reasoning_effort?: string;
 }
 /** One named team-profile template from plugin config. */
 export interface TeamProfileConfig {
@@ -69,6 +76,15 @@ export interface NormalizedProfileTask {
     description?: string;
     assignee?: string;
     dependencies: string[];
+    /**
+     * Validated routing intent. `difficulty` / `role` / `normalizedRole` are
+     * always present (defaults `medium` / `general`); the explicit route stays
+     * optional and is a **captain preference** when present.
+     */
+    difficulty: TaskDifficulty;
+    role: string;
+    normalizedRole: string;
+    route?: TaskRouteLine;
     sourceIndex: number;
 }
 /** A fully validated, topologically ordered team profile. */

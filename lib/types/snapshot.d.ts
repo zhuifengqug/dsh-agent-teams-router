@@ -42,6 +42,21 @@ export interface TeamActivityTask {
     readonly kind?: string;
     readonly round?: number;
     readonly verdict?: string;
+    /** Routing tier when the task carries a routing row (low/medium/high/max). */
+    readonly difficulty?: string;
+    /** Free-text role stored on the task, so an editor can prefill instead of guessing. */
+    readonly role?: string;
+    /** Resolution outcome of the last route resolution (resolved/pending/blocked). */
+    readonly routeStatus?: string;
+    /** Where the resolved route came from (user/captain/difficulty/fallback/none). */
+    readonly routeSource?: string;
+    /**
+     * Why this task is waiting instead of running.
+     *
+     * The activity panel renders it verbatim, so a queued task is never a silent
+     * stall: the reason (for example the global `maxMembers` cap) is visible.
+     */
+    readonly queueReason?: string;
     /** Durable last-write stamp; drives the finished-member ordering (issue #192). */
     readonly updatedAt: number;
 }
