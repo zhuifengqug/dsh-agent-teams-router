@@ -419,6 +419,13 @@ export function apply(ctx: Context, config: Config): void {
               ...typeof payload['executionPrompt'] === 'string' || payload['executionPrompt'] === null
                 ? { executionPrompt: payload['executionPrompt'] as string | null }
                 : {},
+              // A model chosen on this surface is a **pin** (`routeSource: 'user'`):
+              // it outranks the route derived from the member's tasks and blocks
+              // approval when unavailable, exactly like a task-row hard route. A
+              // payload that only edits the role or the prompt sends no
+              // `routeSource` at all, so it cannot create or drop a pin.
+              ...payload['routeSource'] === 'user' ? { routeSource: 'user' as const } : {},
+              ...payload['routeSource'] === null ? { routeSource: null } : {},
             }
           } else if (action === 'update_task') {
             if (typeof payload['taskId'] !== 'string' || typeof payload['subject'] !== 'string') {

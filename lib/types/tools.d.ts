@@ -40,6 +40,13 @@ export type StagedPlanMutation = {
     model: string;
     reasoningEffort?: string | null;
     executionPrompt?: string | null;
+    /**
+     * Provenance of the member's `provider`/`model`. The staged UI sends
+     * `user` (a pin: it outranks the task-derived route and must be
+     * dispatchable); the captain's tool path sends `captain`. Absent leaves the
+     * stored provenance untouched, so an unrelated edit cannot drop a pin.
+     */
+    routeSource?: 'user' | 'captain' | null;
 } | {
     action: 'update_task';
     taskId: string;
@@ -171,6 +178,29 @@ export declare function revalidateTaskRoutes(ctx: Context, fresh: TeamState, opt
  * otherwise an idle member whose frozen `routeKey` matches is reused.
  */
 export declare function planMemberSlots(fresh: TeamState, maxMembers: number): void;
+/**
+ * Reject an approval whose **pinned** member route cannot be dispatched.
+ *
+ * A member the user pinned in the staged plan is a hard route in its own right,
+ * so it gets the same treatment as a user task route: an unavailable pin stops
+ * the approval instead of being silently swapped. The value-router service is
+ * the only judge of availability, so this asks it rather than re-deriving
+ * catalog rules here.
+ *
+ * The service records one audit event per `resolve()`; that event is attributed
+ * to `member:<name>` so it cannot be mistaken for a task dispatch.
+ */
+export declare function revalidateMemberRoutes(ctx: Context, fresh: TeamState): Promise<void>;
+/**
+ * Freeze a user pin onto the member and keep its tasks' records truthful.
+ *
+ * A pin is an explicit human decision, so it outranks the route derived from the
+ * member's tasks. The tasks it serves are then re-stamped with the pinned route:
+ * `task.resolvedRoute` is read by the activity panel and by the durable-state
+ * validators, and a record claiming a line the member does not run on would be a
+ * lie.
+ */
+export declare function applyMemberRoutePins(fresh: TeamState): void;
 /** The unique resolved route shared by a member's resolved tasks, when they agree. */
 export declare function frozenRouteOf(team: TeamState, memberName: string): {
     provider: string;

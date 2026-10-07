@@ -409,7 +409,19 @@ function StagedMemberEditor({ team, member, modelDirectory, onPendingChange, t }
   }, [member.role, member.provider, member.model, member.reasoningEffort, member.executionPrompt, remoteSignature])
 
   const markEdited = (): void => { setFeedback(undefined) }
-  const persist = async (selection: PlanModelSelection = { provider, model, reasoningEffort }): Promise<void> => {
+  /**
+   * Persist this member row.
+   *
+   * `pinRoute` is only set by the model picker: choosing a model here is an
+   * explicit human decision, so the host records it as `routeSource: 'user'` and
+   * refuses to approve the plan while it is undispatchable. Saving the role or
+   * the prompt must NOT create (or drop) that pin, which is why the flag is
+   * opt-in per call rather than implied by every save.
+   */
+  const persist = async (
+    selection: PlanModelSelection = { provider, model, reasoningEffort },
+    options: { pinRoute?: boolean } = {},
+  ): Promise<void> => {
     const nextSignature = JSON.stringify([
       role,
       selection.provider,
@@ -433,6 +445,7 @@ function StagedMemberEditor({ team, member, modelDirectory, onPendingChange, t }
         model: selection.model,
         reasoningEffort: selection.reasoningEffort,
         executionPrompt,
+        ...options.pinRoute === true ? { routeSource: 'user' } : {},
       })
       setSavedSignature(nextSignature)
       setFeedback({ tone: 'success', message: t('plan.saved') })
@@ -475,7 +488,7 @@ function StagedMemberEditor({ team, member, modelDirectory, onPendingChange, t }
               model={model}
               reasoningEffort={reasoningEffort}
               busy={busy}
-              onChange={(selection) => { void persist(selection) }}
+              onChange={(selection) => { void persist(selection, { pinRoute: true }) }}
               t={t}
             />
             <label>{t('plan.member.prompt')}<textarea name="executionPrompt" value={executionPrompt} onChange={(event) => { setExecutionPrompt(event.currentTarget.value); markEdited() }} rows={3} /></label>

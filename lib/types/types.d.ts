@@ -209,6 +209,16 @@ export interface TeamMember {
      * the same member; a different key requires a separate member.
      */
     routeKey?: string;
+    /**
+     * Provenance of `provider`/`model`/`reasoningEffort`.
+     *
+     * `user` = pinned by the human in the staged plan editor. A pin is an explicit
+     * decision: it outranks the route derived from the member's tasks, and it must
+     * be dispatchable or approval is rejected. `captain` = set through the
+     * model-facing plan tools. Absent = authored by a profile, or derived from the
+     * member's tasks by `planMemberSlots`.
+     */
+    routeSource?: 'user' | 'captain';
     /** Difficulty this member was frozen for (part of `routeKey`). */
     difficulty?: string;
     /** Normalized role this member was frozen for (part of `routeKey`). */

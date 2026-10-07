@@ -730,6 +730,7 @@ function isTeamMember(value: unknown): value is TeamMember {
     && isOptionalString(value['provider'])
     && isOptionalString(value['model'])
     && isOptionalString(value['reasoningEffort'])
+    && (value['routeSource'] === undefined || value['routeSource'] === 'user' || value['routeSource'] === 'captain')
     && isOptionalString(value['activeProvider'])
     && isOptionalString(value['activeModel'])
     && isOptionalString(value['spawnError'])

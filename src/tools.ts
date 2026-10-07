@@ -120,6 +120,13 @@ export type StagedPlanMutation =
       model: string
       reasoningEffort?: string | null
       executionPrompt?: string | null
+      /**
+       * Provenance of the member's `provider`/`model`. The staged UI sends
+       * `user` (a pin: it outranks the task-derived route and must be
+       * dispatchable); the captain's tool path sends `captain`. Absent leaves the
+       * stored provenance untouched, so an unrelated edit cannot drop a pin.
+       */
+      routeSource?: 'user' | 'captain' | null
     }
   | {
       action: 'update_task'
@@ -391,6 +398,93 @@ export function planMemberSlots(fresh: TeamState, maxMembers: number): void {
     for (const task of group.tasks) {
       delete task.assignee
       task.queueReason = `maxMembers (${maxMembers})：同 route 成员槽位已满，任务排队；不降档、不换模型`
+    }
+  }
+}
+
+/**
+ * Reject an approval whose **pinned** member route cannot be dispatched.
+ *
+ * A member the user pinned in the staged plan is a hard route in its own right,
+ * so it gets the same treatment as a user task route: an unavailable pin stops
+ * the approval instead of being silently swapped. The value-router service is
+ * the only judge of availability, so this asks it rather than re-deriving
+ * catalog rules here.
+ *
+ * The service records one audit event per `resolve()`; that event is attributed
+ * to `member:<name>` so it cannot be mistaken for a task dispatch.
+ */
+export async function revalidateMemberRoutes(ctx: Context, fresh: TeamState): Promise<void> {
+  const service = valueRouterOf(ctx as unknown as { get(key: never): unknown })
+  if (service === undefined) return
+  const blocked: string[] = []
+  for (const member of fresh.members) {
+    if (member.routeSource !== 'user') continue
+    if (member.provider === undefined || member.model === undefined) continue
+    if (member.provider === '' || member.model === '') continue
+    const pinned = frozenRouteOf(fresh, member.name)
+    const outcome = await resolveTaskRoute(service, {
+      difficulty: pinned?.difficulty ?? DEFAULT_TASK_DIFFICULTY,
+      role: pinned?.normalizedRole ?? member.normalizedRole ?? member.role ?? DEFAULT_TASK_ROLE,
+      route: { provider: member.provider, model: member.model, reasoning_effort: member.reasoningEffort ?? '' },
+      routeSource: 'user',
+      teamId: fresh.id,
+      taskId: `member:${member.name}`,
+    })
+    if (!outcome.available) return
+    if (outcome.resolution.dispatchable) continue
+    blocked.push(
+      `成员 ${member.name}（用户硬路由 ${member.provider}/${member.model}`
+      + `：${outcome.resolution.reason ?? outcome.resolution.routeStatus}）`,
+    )
+  }
+  if (blocked.length > 0) {
+    throw new Error(
+      `plan approval blocked: user-pinned member routes are unavailable (${blocked.join('；')}). `
+      + 'Fix the route or clear it, then approve again.',
+    )
+  }
+}
+
+/**
+ * Freeze a user pin onto the member and keep its tasks' records truthful.
+ *
+ * A pin is an explicit human decision, so it outranks the route derived from the
+ * member's tasks. The tasks it serves are then re-stamped with the pinned route:
+ * `task.resolvedRoute` is read by the activity panel and by the durable-state
+ * validators, and a record claiming a line the member does not run on would be a
+ * lie.
+ */
+export function applyMemberRoutePins(fresh: TeamState): void {
+  const at = Date.now()
+  for (const member of fresh.members) {
+    if (member.routeSource !== 'user') continue
+    if (member.provider === undefined || member.model === undefined) continue
+    if (member.provider === '' || member.model === '') continue
+    const pinned = {
+      provider: member.provider,
+      model: member.model,
+      reasoning_effort: member.reasoningEffort ?? '',
+    }
+    for (const task of fresh.tasks) {
+      if (task.assignee !== member.name) continue
+      if (task.routeStatus !== 'resolved') continue
+      const current = task.resolvedRoute
+      if (current !== undefined
+        && current.provider === pinned.provider
+        && current.model === pinned.model
+        && current.reasoning_effort === pinned.reasoning_effort) continue
+      task.resolvedRoute = pinned
+      task.routeResolvedSource = 'user'
+      task.routeAudit = [
+        ...(task.routeAudit ?? []),
+        {
+          at,
+          step: 'member-route',
+          outcome: 'ok',
+          detail: `成员 ${member.name} 的用户硬路由 ${pinned.provider}/${pinned.model} 取代了本次档位解析结果`,
+        },
+      ]
     }
   }
 }
@@ -991,6 +1085,11 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
           member.model = selection.model
           member.reasoningEffort = selection.reasoningEffort
           member.executionPrompt = trimmedOptional(mutation.executionPrompt)
+          // Provenance is only rewritten when the mutation says something about
+          // it; an unrelated edit (role, prompt) must not drop an existing pin.
+          if (mutation.routeSource === 'user') member.routeSource = 'user'
+          else if (mutation.routeSource === 'captain') member.routeSource = 'captain'
+          else if (mutation.routeSource === null) delete member.routeSource
         } else if (mutation.action === 'update_task') {
           const task = requireTask(fresh, mutation.taskId)
           if (task.status !== 'pending' || (task.attempt ?? 0) !== 0 || task.reassigning === true) {
@@ -1098,12 +1197,18 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
       // the live model catalog. A user hard route that is unavailable blocks the
       // whole approval rather than being silently replaced.
       await revalidateTaskRoutes(ctx, fresh)
+      // A member the user pinned is a hard route in its own right: it must be
+      // dispatchable before anything is frozen, exactly like a user task route.
+      await revalidateMemberRoutes(ctx, fresh)
       // Shape the roster by final route: tasks that resolve to the same member
       // reuse key share one member, a different route gets its own slot, and the
       // excess queues once the global cap is reached. Members added here are
       // ordinary members and go through the same route resolution and catalog
       // validation as captain-authored ones below.
       planMemberSlots(fresh, config.maxMembers)
+      // A user pin outranks the route derived from the member's tasks, so apply
+      // it after slot planning and keep the tasks' records truthful.
+      applyMemberRoutePins(fresh)
       validateStagedGraph(fresh, true)
       const selections = []
       for (const member of fresh.members) {
@@ -1490,6 +1595,9 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
             model: operation.model?.trim() || member.model || '',
             reasoningEffort: operation.reasoning_effort ?? member.reasoningEffort,
             executionPrompt: operation.execution_prompt ?? member.executionPrompt,
+            // The model-facing path never produces a human pin: only an explicit
+            // provider/model choice here is a captain preference.
+            ...operation.provider?.trim() ? { routeSource: 'captain' as const } : {},
           }
         }
         if (operation.action === 'update_task') {
@@ -2879,6 +2987,7 @@ async function initializeProfileTeam(input: {
   if (!input.staged) {
     await revalidateTaskRoutes(input.ctx, draft, { userRouteUnavailable: 'queue' })
     planMemberSlots(draft, input.config.maxMembers)
+    applyMemberRoutePins(draft)
   }
 
   const selections: Awaited<ReturnType<typeof resolveMemberLlmSelection>>[] = []
