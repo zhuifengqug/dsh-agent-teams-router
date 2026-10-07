@@ -3004,17 +3004,18 @@ async function initializeProfileTeam(input: {
     member.provider = selection.provider
     member.model = selection.model
     member.reasoningEffort = selection.reasoningEffort
-    // A route-derived slot keeps the key planMemberSlots minted; an authored
-    // member has none until a resolved task binds it to a route.
-    if (member.routeKey !== undefined) {
-      member.routeKey = memberReuseKey({
-        difficulty: taskRoute?.difficulty ?? member.difficulty ?? DEFAULT_TASK_DIFFICULTY,
-        normalizedRole: taskRoute?.normalizedRole ?? member.normalizedRole ?? DEFAULT_TASK_ROLE,
-        provider: selection.provider,
-        model: selection.model,
-        reasoning_effort: selection.reasoningEffort ?? '',
-      })
-    }
+    // Freeze the key exactly as `approveStagedTeam` does, so an authored member
+    // ends up with the same record shape on both creation paths. Guarding this on
+    // `member.routeKey !== undefined` would have skipped every member the profile
+    // authored — the field is only pre-set for slots `planMemberSlots` minted —
+    // and left the two paths disagreeing about the same member.
+    member.routeKey = memberReuseKey({
+      difficulty: taskRoute?.difficulty ?? member.difficulty ?? DEFAULT_TASK_DIFFICULTY,
+      normalizedRole: taskRoute?.normalizedRole ?? member.normalizedRole ?? DEFAULT_TASK_ROLE,
+      provider: selection.provider,
+      model: selection.model,
+      reasoning_effort: selection.reasoningEffort ?? '',
+    })
   }
   await validateMemberLlmSelections(input.ctx, selections, input.exec.signal)
 
