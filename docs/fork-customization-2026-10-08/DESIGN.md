@@ -280,6 +280,25 @@ export function agencyServicesOf(ctx: { get(key: never): unknown }) {
 
 ---
 
+## E · 归档团队删除（2026-10-08 用户提出，步 7.5）
+
+面板「已结束 · 历史归档」卡片支持**永久删除**。设计沿用 D 段令牌与确认纪律。
+
+**数据层**（`state.ts` `deleteArchivedTeam`）：先 `listArchivedTeamIds` 精确匹配——`teamId` 在匹配成功前绝不参与路径拼接，杜绝路径注入；命中后 `rm(join(stateRoot,'archive',teamId), {recursive, force})` **直接删除、无备份**（用户既定规则：授权删除即直接删，不「先复制备份再删」）；幂等——已不存在返回 `false` 不报错。
+
+**Host 路由**（`src/index.ts` `POST /plugins/dsh-agent-teams/archive-delete`）：包在 `authenticatedWebRoutes` 门内，照 `/halt`/`/plan` 模式（非 POST 405、缺参 400）。与它们的**关键差异**：不查活体队长会话——归档团队的队长会话通常已释放，`ctx.agents.get(sessionId)` 必然 miss；所有权改为绑定到归档 `team.json` 的 `captainSessionId`（遍历 workspaceRegistry 根，`listArchivedTeamIds` + `readArchivedTeam` 找到 `teamId` 且 `captainSessionId === payload.sessionId` 才删）。命中 200 `{ok,teamId}`；不存在/不匹配 404 `{error:'archived team not found for this session'}`。
+
+**UI**：删除按钮只出现在 `visibleArchived` 卡（真实归档目录）；**两击确认**——第一击进入确认态（文案切换 + 取消按钮，Esc/失焦任一退出），第二击 POST；成功后本地剔除该归档行（`pruneArchivedTeamLocally`，下一轮轮询自然收敛权威列表）；失败恢复按钮并展示错误。`visibleHistoric`（legacy 会话卡投影，无归档目录）**不加按钮**。
+
+**三个默认值裁决（2026-10-08）**：
+1. 所有权绑定不要求活体队长——durables 对 durables，归档目录的 `captainSessionId` 即授权凭据。
+2. 删除即授权，直接 `rm` 无备份——不引入回收站/二次归档。
+3. 范围仅真实归档（`archive/` 目录）——legacy 会话卡只是对话日志投影，无归档目录可删，不提供按钮。
+
+**验收**：单测（`archive-delete.test.mjs`）覆盖 `deleteArchivedTeam`（匹配删除/幂等/不存在/路径注入拒绝/兄弟归档不受影响）与路由语义（认证门 401 先于一切、405、400、所有权 404、500 时归档原样保留）；样式只动宿主 error 令牌。
+
+---
+
 ## 实施顺序（按依赖，每步独立可验证）
 
 | 步 | 内容 | 依赖 | 验证 |
@@ -291,6 +310,7 @@ export function agencyServicesOf(ctx: { get(key: never): unknown }) {
 | 5 | **B** 数据层：routeAudit 投影进快照（截 12 条 + degraded/fallback/effort 字段） | 4 | 截断/字段/回归单测 |
 | 6 | **C.1** 数据层：成本聚合（no-data≠0，来源标注） | 5 | 形状与 no-data 单测 |
 | 7 | **D** UI：B/C 展示层一次性落地（含 B.3 三场景与 C.1 读数显示） | 6 | 双主题浏览器验收（captain 侧） |
+| 7.5 | **E** 归档团队删除（认证路由+所有权绑定+两击确认 UI） | 7 | `archive-delete.test.mjs` + `verify:web-routes` |
 | 8 | 填充 `max` 档配置（profile 侧，非本仓库） | — | 面板确认 |
 
 **提交切分**：一步一提交，Conventional Commits，中文正文；每笔提交前跑 `pnpm build` + `pnpm typecheck` + 相关测试。
