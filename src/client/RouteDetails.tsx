@@ -8,20 +8,26 @@
  * absolutely positioned overlay under `.panel` (already `position: absolute`,
  * which makes it the containing block) — no body portal, no `position: fixed`.
  * Steps follow the D.4 color table with host status tokens only.
+ *
+ * Pure helpers (timing constants, `routeLine`, number formatting, routeKey
+ * splitting) live in `route-details-model.ts` so offline tests can import the
+ * tsc output without pulling in CSS.
  * @module dsh-agent-teams/client/route-details
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ActivityCostSummary, ActivityRouteAuditStep, ActivityTeam, ActivityTask } from './activity-monitor.ts'
 import type { AgentTeamsLocaleKey, AgentTeamsTranslate } from './locales.ts'
+import {
+  COST_SKELETON_GIVEUP_MS,
+  POPOVER_CLOSE_DELAY_MS,
+  POPOVER_OPEN_DELAY_MS,
+  formatCostEstimate,
+  formatTokensGrouped,
+  memberRouteKeyParts,
+  routeLine,
+} from './route-details-model.ts'
 import css from './RouteDetails.module.css'
-
-/** Pointer dwell before a popover opens (DESIGN D.3; copied, not tuned). */
-export const POPOVER_OPEN_DELAY_MS = 100
-/** Close grace after the pointer leaves (DESIGN D.3; copied, not tuned). */
-export const POPOVER_CLOSE_DELAY_MS = 100
-/** Skeleton shows this long before giving up and rendering an em dash (D.5). */
-export const COST_SKELETON_GIVEUP_MS = 2000
 
 /** Single shared open popover: a non-empty key replaces the previous card. */
 let openPopoverKey: string | null = null
@@ -36,10 +42,6 @@ function publishPopoverKey(next: string | null): void {
 function subscribePopoverKey(listener: () => void): () => void {
   popoverListeners.add(listener)
   return () => { popoverListeners.delete(listener) }
-}
-
-function readPopoverKey(): string | null {
-  return openPopoverKey
 }
 
 /** Shared 100 ms dwell / 100 ms grace / one-card-at-a-time controller. */
@@ -100,15 +102,6 @@ function popoverPointerProps(open: boolean, enter: () => void, leave: () => void
 function auditTriggerLabel(task: ActivityTask, t: AgentTeamsTranslate): string {
   const total = task.routeAudit === undefined ? 0 : task.routeAudit.total
   return `${t('route.auditTitle')} · ${t('route.auditSteps', { count: total })}`
-}
-
-/** Mono `provider/model@effort` line; empty parts collapse away. */
-export function routeLine(provider: string, model: string, effort: string): string {
-  const left = provider.trim()
-  const right = model.trim()
-  const base = left !== '' && right !== '' ? `${left}/${right}` : right !== '' ? right : left
-  const e = effort.trim()
-  return base === '' ? (e === '' ? '' : `@${e}`) : e === '' ? base : `${base}@${e}`
 }
 
 /** The four difficulty tiers keep their host task-badge look (D.4/D.5). */
@@ -190,20 +183,6 @@ export function RouteAuditPopover({ task, t, popoverKey }: {
 }
 
 /** Number formatting copied from the host chat rules (D.5: character-identical). */
-export function formatTokensGrouped(value: number): string {
-  const negative = value < 0
-  const digits = String(Math.abs(Math.round(value)))
-  const groups: string[] = []
-  for (let end = digits.length; end > 0; end -= 3) groups.unshift(digits.slice(Math.max(0, end - 3), end))
-  return `${negative ? '-' : ''}${groups.join(',')}`
-}
-
-/** One decimal, trailing `.0` trimmed (cost buckets are fractional). */
-function formatCostEstimate(value: number): string {
-  const rounded = Math.round(value * 10) / 10
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
-}
-
 function costMetricText(metric: { value: number } | undefined, cost: boolean): string | null {
   if (metric === undefined) return null
   return cost ? formatCostEstimate(metric.value) : formatTokensGrouped(metric.value)
@@ -330,38 +309,6 @@ export function TeamCostCell({ cost, t }: {
 }
 
 /**
- * Member-row routeKey decomposition (B member view).
- *
- * The routeKey is `difficulty + normalizedRole + provider + model +
- * reasoning_effort`; the panel splits it into the D.4 five readable segments:
- * difficulty, role, provider, model, effort — mono `label-tertiary`.
- */
-export function memberRouteKeyParts(member: {
-  readonly provider?: string
-  readonly model?: string
-  readonly reasoningEffort?: string
-  readonly difficulty?: string
-  readonly normalizedRole?: string
-  readonly role?: string
-}): {
-  readonly difficulty: string
-  readonly role: string
-  readonly provider: string
-  readonly model: string
-  readonly effort: string
-} {
-  const provider = (member.provider ?? '').trim()
-  const model = (member.model ?? '').trim()
-  return {
-    difficulty: (member.difficulty ?? '').trim(),
-    role: (member.normalizedRole ?? member.role ?? '').trim(),
-    provider,
-    model,
-    effort: (member.reasoningEffort ?? '').trim(),
-  }
-}
-
-/**
  * Member row routeKey chip (B member view): five segments in mono
  * `label-tertiary`, hidden entirely when the member has no frozen key parts.
  */
@@ -372,7 +319,7 @@ export function MemberRouteKey({ member }: {
   if (difficulty === '' && role === '' && provider === '' && model === '' && effort === '') return null
   return (
     <span className={css.routeKeyChip} data-route-key data-monospace-label
-      title={t_memberRouteKeyTitle(difficulty, role, provider, model, effort)}
+      title={[difficulty, role, provider, model, effort].filter((part) => part !== '').join(' / ')}
     >
       {difficulty !== '' && <span className={css.routeKeySeg} data-route-key-seg="difficulty">{difficulty}</span>}
       {role !== '' && <span className={css.routeKeySeg} data-route-key-seg="role">{role}</span>}
@@ -381,8 +328,4 @@ export function MemberRouteKey({ member }: {
       {effort !== '' && <span className={css.routeKeySeg} data-route-key-seg="effort">{effort}</span>}
     </span>
   )
-}
-
-function t_memberRouteKeyTitle(difficulty: string, role: string, provider: string, model: string, effort: string): string {
-  return [difficulty, role, provider, model, effort].filter((part) => part !== '').join(' / ')
 }

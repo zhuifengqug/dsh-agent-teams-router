@@ -69,8 +69,8 @@ import {
   RouteAuditPopover,
   TeamCostCell,
   difficultyBadge,
-  routeLine,
 } from './RouteDetails.tsx'
+import { routeLine } from './route-details-model.ts'
 
 import {
   DEFAULT_PANEL_LAYOUT,
