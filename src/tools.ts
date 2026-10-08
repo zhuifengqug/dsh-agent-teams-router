@@ -178,7 +178,10 @@ export const TASK_ROUTE_PARAMETERS = {
   difficulty: {
     type: 'string' as const,
     enum: ['low', 'medium', 'high', 'max'],
-    description: 'Task difficulty tier. Missing means medium. Marks the row as a routing intent.',
+    description: 'Task difficulty tier. Missing means medium. Marks the row as a routing intent. '
+      + 'Score by convergence, not topic: low = mechanical single-point change; medium = one module with explicit acceptance; '
+      + 'high = cross-module with trade-offs and regression risk; max = hard root cause, safety-critical, irreversible or public contract. '
+      + 'When unsure, score higher rather than lower; inflating a tier burns money instead of buying insurance.',
   },
   role: {
     type: 'string' as const,
@@ -1349,7 +1352,7 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
             id: { type: 'string', required: true, description: 'Local reference used by dependencies in this plan; the result maps it to a durable task id.' },
             subject: { type: 'string', required: true }, description: { type: 'string' }, assignee: { type: 'string' },
             dependencies: { type: 'array', items: { type: 'string' } },
-            difficulty: { type: 'string', enum: ['low', 'medium', 'high', 'max'], description: 'Task difficulty tier. Missing means medium.' },
+            difficulty: { type: 'string', enum: ['low', 'medium', 'high', 'max'], description: 'Task difficulty tier. Missing means medium. Score by convergence, not topic: low = mechanical single-point change; medium = one module with explicit acceptance; high = cross-module with trade-offs and regression risk; max = hard root cause, safety-critical, irreversible or public contract. When unsure, score higher rather than lower; inflating a tier burns money instead of buying insurance.' },
             role: { type: 'string', description: 'Free-text task role. Missing means general.' },
             provider: { type: 'string', description: 'Optional explicit route provider (a captain preference); requires model.' },
             model: { type: 'string', description: 'Optional explicit route model; requires provider.' },
@@ -1547,7 +1550,7 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
             model: { type: 'string', description: 'Optional member model; defaults to the current staged route.' },
             reasoning_effort: { type: 'string', description: 'Optional member reasoning effort.' },
             execution_prompt: { type: 'string', description: 'Optional member-specific execution prompt.' },
-            task_difficulty: { type: 'string', enum: ['low', 'medium', 'high', 'max'], description: 'Task routing only: difficulty tier. Omit to leave the stored tier untouched.' },
+            task_difficulty: { type: 'string', enum: ['low', 'medium', 'high', 'max'], description: 'Task routing only: difficulty tier. Omit to leave the stored tier untouched. Score by convergence, not topic: low = mechanical single-point change; medium = one module with explicit acceptance; high = cross-module with trade-offs and regression risk; max = hard root cause, safety-critical, irreversible or public contract. When unsure, score higher rather than lower; inflating a tier burns money instead of buying insurance.' },
             task_role: { type: 'string', description: 'Task routing only: free-text role (the member role uses `role`). Omit to leave it untouched.' },
             task_provider: { type: 'string', description: 'Task routing only: explicit route provider. Send together with task_model; send both empty to clear the route.' },
             task_model: { type: 'string', description: 'Task routing only: explicit route model. Send together with task_provider.' },
