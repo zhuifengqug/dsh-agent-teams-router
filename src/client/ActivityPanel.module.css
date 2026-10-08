@@ -1010,6 +1010,18 @@
   text-decoration: line-through;
 }
 
+/* The running-task route-audit popover opens from the chip; the chip keeps its
+   own clipped pill look but must not clip its anchored popover card. */
+.assignmentChip[data-has-audit] {
+  position: relative;
+  overflow: visible;
+}
+
+/* Popover sits flush to the chip's trailing edge instead of adding a gap. */
+.assignmentChip[data-has-audit] > span[class*='auditAnchor']:last-child {
+  margin-left: -3px;
+}
+
 .unreadPill {
   flex: none;
   color: var(--dsw-alias-state-business-primary);

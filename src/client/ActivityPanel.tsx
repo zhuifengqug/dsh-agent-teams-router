@@ -860,13 +860,12 @@ export function TeamSection({ team, modelDirectory, onContinuePlanning, onDiscar
                               className={css.assignmentChip}
                               data-state={discarded ? 'cancelled' : taskTone(task.state, task.status)}
                               data-task-model={model || undefined}
+                              data-has-audit={task.state === 'running' && task.routeAudit !== undefined && task.routeAudit.entries.length > 0 || undefined}
                               title={taskTitle(task, model)}
                             >
                               {task.state === 'running' && shortModel !== '' ? `${task.id} · ${shortModel}` : task.id}
                               {task.state === 'running' && task.routeAudit !== undefined && task.routeAudit.entries.length > 0 && (
-                                <span className={routeCss.auditAnchor} data-task-audit-chip>
-                                  <RouteAuditPopover task={task} t={t} popoverKey={`${team.teamId}:${member.name}:${task.id}:chip`} />
-                                </span>
+                                <RouteAuditPopover task={task} t={t} popoverKey={`${member.name}:${task.id}:chip`} />
                               )}
                             </span>
                           )

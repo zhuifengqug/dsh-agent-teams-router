@@ -276,32 +276,50 @@ export function CostPopover({ cost, t, popoverKey }: {
 /**
  * Headline cost cell (C.1): a team-total figure in the panel/team header.
  *
- * States: `ok` → real number; `no-data`/missing → a 37px pulsing skeleton that
- * gives up after 2 s and becomes an em dash; never a fabricated zero.
+ * States: `ok` with a headline bucket → real number (title carries the
+ * metric's source); `ok` without a displayable headline bucket → em dash
+ * (data arrived but the headline has nothing honest to show); otherwise a
+ * 37px pulsing skeleton that gives up after 2 s and becomes an em dash. The
+ * give-up timer keys on the *status value*, not object identity — the poll
+ * rebuilds the summary object every second and must not reset the clock.
  */
 export function TeamCostCell({ cost, t }: {
   readonly cost: ActivityTeam['cost']
   readonly t: AgentTeamsTranslate
 }) {
-  const giveUp = cost?.status !== 'ok'
-  const [skeletonEnded, setSkeletonEnded] = useState(giveUp ? COST_SKELETON_GIVEUP_MS : 0)
+  const status = cost?.status
+  const [skeletonEnded, setSkeletonEnded] = useState(false)
   useEffect(() => {
-    if (cost?.status === 'ok') return
-    setSkeletonEnded(COST_SKELETON_GIVEUP_MS)
-    const timer = setTimeout(() => setSkeletonEnded(COST_SKELETON_GIVEUP_MS + 1), COST_SKELETON_GIVEUP_MS)
+    if (status === 'ok') {
+      setSkeletonEnded(false)
+      return
+    }
+    const timer = setTimeout(() => setSkeletonEnded(true), COST_SKELETON_GIVEUP_MS)
     return () => clearTimeout(timer)
-  }, [cost])
-  const totals = cost?.status === 'ok' ? cost.totals : undefined
-  const totalText = costMetricText(totals?.costEstimate, true) ?? costMetricText(totals?.inputTokens, false)
-  if (cost?.status === 'ok' && totalText !== null) {
+  }, [status])
+  if (status === 'ok' && cost !== undefined) {
+    const totals = cost.totals
+    const headlineMetric = totals?.costEstimate
+    const headline = headlineMetric ?? totals?.inputTokens
+    if (headline !== undefined) {
+      return (
+        <span
+          className={css.costCell}
+          data-cost-state="ok"
+          title={t('cost.source.label', { source: (headlineMetric ?? headline).source })}
+        >
+          <span className={css.costCellLabel}>{t('cost.summaryLabel')}</span>
+          <span className={css.costCellValue}>{costMetricText(headline, headlineMetric !== undefined)}</span>
+        </span>
+      )
+    }
     return (
-      <span className={css.costCell} data-cost-state="ok" title={t('cost.source.label', { source: cost.source ?? '' })}>
-        <span className={css.costCellLabel}>{t('cost.summaryLabel')}</span>
-        <span className={css.costCellValue}>{totalText}</span>
+      <span className={css.costCellNoData} data-cost-state="no-data" title={t('cost.noDataFallback')}>
+        {t('cost.noDataMark')}
       </span>
     )
   }
-  if (skeletonEnded <= COST_SKELETON_GIVEUP_MS) {
+  if (!skeletonEnded) {
     return <span className={css.costCellSkeleton} data-cost-state="skeleton" aria-label={t('cost.skeletonAria')} />
   }
   return (
@@ -311,7 +329,13 @@ export function TeamCostCell({ cost, t }: {
   )
 }
 
-/** Mono `difficulty · role · provider/model@effort` route-key decomposition. */
+/**
+ * Member-row routeKey decomposition (B member view).
+ *
+ * The routeKey is `difficulty + normalizedRole + provider + model +
+ * reasoning_effort`; the panel splits it into the D.4 five readable segments:
+ * difficulty, role, provider, model, effort — mono `label-tertiary`.
+ */
 export function memberRouteKeyParts(member: {
   readonly provider?: string
   readonly model?: string
@@ -319,12 +343,21 @@ export function memberRouteKeyParts(member: {
   readonly difficulty?: string
   readonly normalizedRole?: string
   readonly role?: string
-}): { readonly difficulty: string; readonly role: string; readonly route: string } {
-  const role = (member.normalizedRole ?? member.role ?? '').trim()
+}): {
+  readonly difficulty: string
+  readonly role: string
+  readonly provider: string
+  readonly model: string
+  readonly effort: string
+} {
+  const provider = (member.provider ?? '').trim()
+  const model = (member.model ?? '').trim()
   return {
     difficulty: (member.difficulty ?? '').trim(),
-    role,
-    route: routeLine(member.provider ?? '', member.model ?? '', member.reasoningEffort ?? ''),
+    role: (member.normalizedRole ?? member.role ?? '').trim(),
+    provider,
+    model,
+    effort: (member.reasoningEffort ?? '').trim(),
   }
 }
 
@@ -335,13 +368,21 @@ export function memberRouteKeyParts(member: {
 export function MemberRouteKey({ member }: {
   readonly member: Parameters<typeof memberRouteKeyParts>[0]
 }) {
-  const { difficulty, role, route } = memberRouteKeyParts(member)
-  if (difficulty === '' && role === '' && route === '') return null
+  const { difficulty, role, provider, model, effort } = memberRouteKeyParts(member)
+  if (difficulty === '' && role === '' && provider === '' && model === '' && effort === '') return null
   return (
-    <span className={css.routeKeyChip} data-route-key data-monospace-label>
-      {difficulty !== '' && <span className={css.routeKeySeg}>{difficulty}</span>}
-      {role !== '' && <span className={css.routeKeySeg}>{role}</span>}
-      {route !== '' && <span className={css.routeKeySeg}>{route}</span>}
+    <span className={css.routeKeyChip} data-route-key data-monospace-label
+      title={t_memberRouteKeyTitle(difficulty, role, provider, model, effort)}
+    >
+      {difficulty !== '' && <span className={css.routeKeySeg} data-route-key-seg="difficulty">{difficulty}</span>}
+      {role !== '' && <span className={css.routeKeySeg} data-route-key-seg="role">{role}</span>}
+      {provider !== '' && <span className={css.routeKeySeg} data-route-key-seg="provider">{provider}</span>}
+      {model !== '' && <span className={css.routeKeySeg} data-route-key-seg="model">{model}</span>}
+      {effort !== '' && <span className={css.routeKeySeg} data-route-key-seg="effort">{effort}</span>}
     </span>
   )
+}
+
+function t_memberRouteKeyTitle(difficulty: string, role: string, provider: string, model: string, effort: string): string {
+  return [difficulty, role, provider, model, effort].filter((part) => part !== '').join(' / ')
 }

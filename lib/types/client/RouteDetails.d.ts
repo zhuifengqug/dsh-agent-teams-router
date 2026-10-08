@@ -39,14 +39,24 @@ export declare function CostPopover({ cost, t, popoverKey }: {
 /**
  * Headline cost cell (C.1): a team-total figure in the panel/team header.
  *
- * States: `ok` → real number; `no-data`/missing → a 37px pulsing skeleton that
- * gives up after 2 s and becomes an em dash; never a fabricated zero.
+ * States: `ok` with a headline bucket → real number (title carries the
+ * metric's source); `ok` without a displayable headline bucket → em dash
+ * (data arrived but the headline has nothing honest to show); otherwise a
+ * 37px pulsing skeleton that gives up after 2 s and becomes an em dash. The
+ * give-up timer keys on the *status value*, not object identity — the poll
+ * rebuilds the summary object every second and must not reset the clock.
  */
 export declare function TeamCostCell({ cost, t }: {
     readonly cost: ActivityTeam['cost'];
     readonly t: AgentTeamsTranslate;
 }): import("react").JSX.Element;
-/** Mono `difficulty · role · provider/model@effort` route-key decomposition. */
+/**
+ * Member-row routeKey decomposition (B member view).
+ *
+ * The routeKey is `difficulty + normalizedRole + provider + model +
+ * reasoning_effort`; the panel splits it into the D.4 five readable segments:
+ * difficulty, role, provider, model, effort — mono `label-tertiary`.
+ */
 export declare function memberRouteKeyParts(member: {
     readonly provider?: string;
     readonly model?: string;
@@ -57,7 +67,9 @@ export declare function memberRouteKeyParts(member: {
 }): {
     readonly difficulty: string;
     readonly role: string;
-    readonly route: string;
+    readonly provider: string;
+    readonly model: string;
+    readonly effort: string;
 };
 /**
  * Member row routeKey chip (B member view): five segments in mono
