@@ -178,6 +178,29 @@ export interface TeamTask {
     createdAt: number;
     updatedAt: number;
 }
+/** One audit step as the activity snapshot carries it (bounded projection of the durable entry). */
+export interface TeamRouteAuditStep {
+    at: number;
+    step: string;
+    outcome: string;
+    detail: string;
+    tier?: string;
+    route?: {
+        provider?: string;
+        model?: string;
+        reasoning_effort?: string;
+        status?: string;
+    };
+}
+/** Bounded audit projection: the most recent steps plus how many older ones were cut. */
+export interface TeamRouteAuditProjection {
+    /** The most recent entries, oldest first. */
+    entries: readonly TeamRouteAuditStep[];
+    /** Entries on the durable record before truncation. */
+    total: number;
+    /** Older entries cut to keep the snapshot payload bounded. */
+    truncated: number;
+}
 /** Member lifecycle status. */
 export type MemberStatus = 'idle' | 'working' | 'removed';
 /** One team member: a continuable subagent plus its team-side record. */

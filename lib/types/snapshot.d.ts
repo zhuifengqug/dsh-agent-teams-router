@@ -8,7 +8,7 @@
  * @module dsh-agent-teams/snapshot
  */
 import type { Context } from '@deepseek-ai/cordis';
-import type { MemberStatus, TeamState } from './types.ts';
+import type { MemberStatus, TeamRouteAuditProjection, TeamState } from './types.ts';
 /** Visual task state for the activity panel. */
 export type VisualTaskState = 'blocked' | 'open' | 'running' | 'completed' | 'failed' | 'cancelled';
 /** One member row of the activity snapshot. */
@@ -50,6 +50,18 @@ export interface TeamActivityTask {
     readonly routeStatus?: string;
     /** Where the resolved route came from (user/captain/difficulty/fallback/none). */
     readonly routeSource?: string;
+    /**
+     * Bounded audit trail of the last route resolution: the most recent steps
+     * plus how many older ones were cut. Re-resolution appends audit entries
+     * without bound (`tools.ts`), so the snapshot must truncate.
+     */
+    readonly routeAudit?: TeamRouteAuditProjection;
+    /** The last resolution degraded to a lower difficulty tier (`tier-degrade` step). */
+    readonly degraded?: boolean;
+    /** The last resolution used the global fallback route. */
+    readonly fallback?: boolean;
+    /** Reasoning effort of the resolved route, when one exists and is set. */
+    readonly reasoningEffort?: string;
     /**
      * Why this task is waiting instead of running.
      *

@@ -12,7 +12,7 @@
  * `fs` service offers no directory deletion.
  * @module dsh-agent-teams/state
  */
-import { type TaskStatus, type TeamMessage, type TeamState, type TeamTask } from './types.ts';
+import { type TaskStatus, type TeamMessage, type TeamRouteAuditProjection, type TeamState, type TeamTask } from './types.ts';
 export { amendTaskContract, buildCoverageMatrix, canDeclareDelivery, classifyChangedPath, collectChangedPaths, defaultQualityDeliveryGraph, describeQualityLoop, evaluateQualityCompletion, hasValidQualityTaskFields, isQualityKind, isTaskRevision, normalizeBlankOptionalTaskFields, pathMatchesScope, planQualityFollowUp, qualityPlanningPrompt, resumeTeamState, sanitizeReviewAcceptance, sanitizeReviewObjective, taskKindOf, validateCreateTask, } from './quality-gates.ts';
 export type { ContractAmendmentInput } from './quality-gates.ts';
 /** Mailbox key of the captain. */
@@ -235,3 +235,33 @@ export declare function taskVisualState(status: string, dependencies: readonly s
  * Longest dependency path depth per task id (each depth = one lane column).
  */
 export declare function taskDepthsById(tasks: readonly TeamTask[]): Map<string, number>;
+/** Most recent route-audit entries an activity task row keeps (re-resolution appends without bound). */
+export declare const ROUTE_AUDIT_SNAPSHOT_LIMIT = 12;
+/**
+ * The most recent route-audit steps plus how many older ones were cut, for the
+ * activity task row. `total`/`truncated` count the durable record before
+ * truncation, so the panel can say "…and N more" instead of silently dropping
+ * the earlier steps of the chain.
+ * @param routeAudit - the durable audit trail (may be anything from disk).
+ * @returns the bounded projection, or `undefined` when no audit trail exists.
+ */
+export declare function projectRouteAudit(routeAudit: unknown): TeamRouteAuditProjection | undefined;
+/** The route fields one activity task row carries, projected from the durable record. */
+export interface TeamTaskRouteProjection {
+    routeAudit?: TeamRouteAuditProjection;
+    /** The last resolution degraded to a lower difficulty tier. */
+    degraded?: boolean;
+    /** The last resolution used the global fallback route. */
+    fallback?: boolean;
+    /** Reasoning effort of the resolved route, when one exists and is set. */
+    reasoningEffort?: string;
+}
+/**
+ * Project one task's route data onto the activity row shape.
+ *
+ * `degraded`/`fallback` are derived from the **full** audit (before
+ * truncation), so an older cut step still colors the flag; a `fallback`
+ * resolved source without its audit step is honored too. Missing or malformed
+ * data degrades to omitted fields instead of crashing the snapshot.
+ */
+export declare function projectTaskRouteActivity(task: Pick<TeamTask, 'routeAudit' | 'resolvedRoute' | 'routeResolvedSource'>): TeamTaskRouteProjection;

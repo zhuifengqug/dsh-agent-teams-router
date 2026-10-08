@@ -13,10 +13,10 @@ import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { memberActivity } from './members.ts'
 import {
-  CAPTAIN_KEY, listArchivedTeamIds, readArchivedTeam, readUnreadMailbox, readTeam,
+  CAPTAIN_KEY, listArchivedTeamIds, projectTaskRouteActivity, readArchivedTeam, readUnreadMailbox, readTeam,
   taskDepthsById, taskVisualState,
 } from './state.ts'
-import type { MemberStatus, TeamState, TeamTask } from './types.ts'
+import type { MemberStatus, TeamRouteAuditProjection, TeamState, TeamTask } from './types.ts'
 
 /** Visual task state for the activity panel. */
 export type VisualTaskState = 'blocked' | 'open' | 'running' | 'completed' | 'failed' | 'cancelled'
@@ -61,6 +61,18 @@ export interface TeamActivityTask {
   readonly routeStatus?: string
   /** Where the resolved route came from (user/captain/difficulty/fallback/none). */
   readonly routeSource?: string
+  /**
+   * Bounded audit trail of the last route resolution: the most recent steps
+   * plus how many older ones were cut. Re-resolution appends audit entries
+   * without bound (`tools.ts`), so the snapshot must truncate.
+   */
+  readonly routeAudit?: TeamRouteAuditProjection
+  /** The last resolution degraded to a lower difficulty tier (`tier-degrade` step). */
+  readonly degraded?: boolean
+  /** The last resolution used the global fallback route. */
+  readonly fallback?: boolean
+  /** Reasoning effort of the resolved route, when one exists and is set. */
+  readonly reasoningEffort?: string
   /**
    * Why this task is waiting instead of running.
    *
@@ -209,6 +221,7 @@ export async function assembleTeamSnapshot(
       ...task.role === undefined ? {} : { role: task.role },
       ...task.routeStatus === undefined ? {} : { routeStatus: task.routeStatus },
       ...task.routeResolvedSource === undefined ? {} : { routeSource: task.routeResolvedSource },
+      ...projectTaskRouteActivity(task),
       ...task.queueReason === undefined ? {} : { queueReason: task.queueReason },
       updatedAt: task.updatedAt,
     })),

@@ -17,7 +17,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { TERMINAL_TASK_STATUSES, type TaskStatus, type TeamMember, type TeamMessage, type TeamProfileSnapshot, type TeamState, type TeamTask } from './types.ts'
+import { TERMINAL_TASK_STATUSES, type TaskStatus, type TeamMember, type TeamMessage, type TeamProfileSnapshot, type TeamRouteAuditProjection, type TeamRouteAuditStep, type TeamState, type TeamTask } from './types.ts'
 import { hasValidQualityTaskFields, isReviewPolicy, normalizeBlankOptionalTaskFields } from './quality-gates.ts'
 import { TASK_DIFFICULTIES, type TaskDifficulty } from './router.ts'
 
@@ -873,7 +873,17 @@ function isTaskRouteAudit(value: unknown): boolean {
       && typeof entry['outcome'] === 'string'
       && typeof entry['detail'] === 'string'
       && (entry['tier'] === undefined || typeof entry['tier'] === 'string')
+      && (entry['route'] === undefined || isTaskRouteAuditRoute(entry['route']))
   })
+}
+
+/** Optional route sub-object inside an audit entry, mirroring the Value Router's `RouteAuditEntry`. */
+function isTaskRouteAuditRoute(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  return isOptionalString(value['provider'])
+    && isOptionalString(value['model'])
+    && isOptionalString(value['reasoning_effort'])
+    && isOptionalString(value['status'])
 }
 
 /** Validate the full team record before it can participate in authorization. */
@@ -1110,4 +1120,102 @@ export function taskDepthsById(tasks: readonly TeamTask[]): Map<string, number> 
   }
   for (const task of tasks) depthOf(task.id)
   return depths
+}
+
+/** Most recent route-audit entries an activity task row keeps (re-resolution appends without bound). */
+export const ROUTE_AUDIT_SNAPSHOT_LIMIT = 12
+/** Per-entry detail cap, so one verbose audit step cannot blow the snapshot budget. */
+const ROUTE_AUDIT_DETAIL_CAP = 200
+
+/**
+ * One durable audit entry folded into the bounded snapshot step shape.
+ * Missing fields degrade to empty values instead of crashing the projection;
+ * a pathologically long `detail` is truncated to the per-entry cap.
+ */
+function auditStepOf(entry: Record<string, unknown>): TeamRouteAuditStep {
+  const detail = typeof entry['detail'] === 'string' ? entry['detail'] : ''
+  const routeValue = entry['route']
+  return {
+    at: isFiniteNumber(entry['at']) ? entry['at'] : 0,
+    step: typeof entry['step'] === 'string' ? entry['step'] : '',
+    outcome: typeof entry['outcome'] === 'string' ? entry['outcome'] : '',
+    detail: detail.length > ROUTE_AUDIT_DETAIL_CAP ? detail.slice(0, ROUTE_AUDIT_DETAIL_CAP) : detail,
+    ...typeof entry['tier'] === 'string' ? { tier: entry['tier'] } : {},
+    ...isRecord(routeValue) ? { route: auditRouteOf(routeValue) } : {},
+  }
+}
+
+function auditRouteOf(route: Record<string, unknown>): {
+  provider?: string
+  model?: string
+  reasoning_effort?: string
+  status?: string
+} {
+  return {
+    ...typeof route['provider'] === 'string' ? { provider: route['provider'] } : {},
+    ...typeof route['model'] === 'string' ? { model: route['model'] } : {},
+    ...typeof route['reasoning_effort'] === 'string' ? { reasoning_effort: route['reasoning_effort'] } : {},
+    ...typeof route['status'] === 'string' ? { status: route['status'] } : {},
+  }
+}
+
+/**
+ * The most recent route-audit steps plus how many older ones were cut, for the
+ * activity task row. `total`/`truncated` count the durable record before
+ * truncation, so the panel can say "…and N more" instead of silently dropping
+ * the earlier steps of the chain.
+ * @param routeAudit - the durable audit trail (may be anything from disk).
+ * @returns the bounded projection, or `undefined` when no audit trail exists.
+ */
+export function projectRouteAudit(routeAudit: unknown): TeamRouteAuditProjection | undefined {
+  if (!Array.isArray(routeAudit)) return undefined
+  const entries = routeAudit
+    .map((entry) => (isRecord(entry) ? auditStepOf(entry) : undefined))
+    .filter((step): step is TeamRouteAuditStep => step !== undefined)
+    .slice(-ROUTE_AUDIT_SNAPSHOT_LIMIT)
+  const total = routeAudit.length
+  return {
+    entries,
+    total,
+    truncated: Math.max(0, total - ROUTE_AUDIT_SNAPSHOT_LIMIT),
+  }
+}
+
+/** The route fields one activity task row carries, projected from the durable record. */
+export interface TeamTaskRouteProjection {
+  routeAudit?: TeamRouteAuditProjection
+  /** The last resolution degraded to a lower difficulty tier. */
+  degraded?: boolean
+  /** The last resolution used the global fallback route. */
+  fallback?: boolean
+  /** Reasoning effort of the resolved route, when one exists and is set. */
+  reasoningEffort?: string
+}
+
+/**
+ * Project one task's route data onto the activity row shape.
+ *
+ * `degraded`/`fallback` are derived from the **full** audit (before
+ * truncation), so an older cut step still colors the flag; a `fallback`
+ * resolved source without its audit step is honored too. Missing or malformed
+ * data degrades to omitted fields instead of crashing the snapshot.
+ */
+export function projectTaskRouteActivity(
+  task: Pick<TeamTask, 'routeAudit' | 'resolvedRoute' | 'routeResolvedSource'>,
+): TeamTaskRouteProjection {
+  const steps = Array.isArray(task.routeAudit)
+    ? task.routeAudit.filter((entry) => isRecord(entry)).map(auditStepOf)
+    : []
+  const effort = isRecord(task.resolvedRoute) && typeof task.resolvedRoute['reasoning_effort'] === 'string'
+    ? task.resolvedRoute['reasoning_effort'].trim()
+    : ''
+  const degraded = steps.some((step) => step.step === 'tier-degrade' && step.outcome === 'ok')
+  const fallback = steps.some((step) => step.step === 'fallback' && step.outcome === 'ok')
+    || task.routeResolvedSource === 'fallback'
+  return {
+    ...(Array.isArray(task.routeAudit) ? { routeAudit: projectRouteAudit(task.routeAudit) } : {}),
+    ...(degraded ? { degraded: true } : {}),
+    ...(fallback ? { fallback: true } : {}),
+    ...(effort !== '' ? { reasoningEffort: effort } : {}),
+  }
 }
