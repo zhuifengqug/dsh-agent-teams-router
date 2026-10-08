@@ -2197,6 +2197,21 @@
 
 /* Native workspace shares the team's content, never the legacy overlay geometry. */
 .dagOwner { margin-left: auto; max-width: 64px; overflow: hidden; text-overflow: ellipsis; font-size: 9px; font-weight: 400; }
+/* D.4 strengthening of the existing difficulty badge on the DAG card head:
+   same slot and label, now mono with tier emphasis (low/medium stay neutral;
+   high/max borrow the host warn/error tokens). */
+.dagNodeHead .dagOwner[data-routing-badge='difficulty'] {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+}
+
+.dagNodeHead .dagOwner[data-routing-badge='difficulty'][data-difficulty='high'] {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.dagNodeHead .dagOwner[data-routing-badge='difficulty'][data-difficulty='max'] {
+  color: var(--dsw-alias-state-error-primary);
+}
 /* Native grid and its children must query the same workspace container.
  * The legacy team's nested container made the grid switch before its children
  * at widths where the workspace padding straddled a breakpoint. */
