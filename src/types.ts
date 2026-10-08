@@ -382,3 +382,67 @@ export interface TeamState {
   /** Set when an automatic review/repair loop hits its configured ceiling. */
   escalated?: boolean
 }
+
+// ── 团队成本汇总（DESIGN C.1 数据层，2026-10-08 评审裁决：数据层与展示层分离） ──
+//
+// 形状只挂在活动快照（snapshot.ts → TeamActivitySnapshot.cost）上，**不写
+// team.json**：成本是活数据（来自宿主 usage 来源），落盘即过期。展示位置按
+// DESIGN D.5（标题区一行团队合计 + 成员分列进 popover），UI 全部在步 7。
+
+/** 成本数字的来源（闭集；面板据此给每个数字标注「从哪来」）。 */
+export type TeamCostSource =
+  | 'cost-meter:service'
+  | 'projection:costUsage'
+  | 'projection:tokenUsage'
+
+/** 一个实测数字：真实读数 + 产生它的来源。绝不编造、绝不估算。 */
+export interface TeamCostMetric {
+  value: number
+  source: TeamCostSource
+}
+
+/**
+ * 契约四桶：输入 / 输出 / 缓存命中 / 缓存写入 / 估算费用。
+ * 来源真正报出的桶才存在——缺桶 = 该项无数据（≠ 0）。
+ */
+export interface TeamCostBuckets {
+  inputTokens?: TeamCostMetric
+  outputTokens?: TeamCostMetric
+  cacheReadTokens?: TeamCostMetric
+  cacheWriteTokens?: TeamCostMetric
+  costEstimate?: TeamCostMetric
+}
+
+/** 一个成员的成本行。`reading` 缺席 = 该成员无数据（不是 0）。 */
+export interface TeamMemberCost {
+  /** 成员的 durable 子会话 id（staged/未派生成员为空串）。 */
+  memberId: string
+  memberName: string
+  reading?: TeamCostBuckets
+  /**
+   * 来源报告的、归属该成员的委托子会话数（成员开启委派、其孙会话有账本记录时
+   * 才出现）。这些子会话的用量已并入该成员读数，避免团队合计漏算。
+   */
+  attributedSubsessions?: number
+}
+
+/**
+ * 团队级成本汇总（DESIGN C.1）。
+ *
+ * - `status: 'no-data'`：来源缺席或读不到任何成员读数——**明确 no-data 状态，
+ *   绝不输出 0 充数**；`reason` 说明为什么读不到，供面板展示。
+ * - `status: 'ok'`：至少一条真实读数；`source` 标注读数实际使用的来源，
+ *   `totals` 对成员读数逐桶求和（没有任何成员报出的桶保持缺席），`members`
+ *   为花名册全员分列（无读数的成员不带 `reading`）。
+ */
+export interface TeamCostSummary {
+  status: 'ok' | 'no-data'
+  /** 读数实际使用的来源（status 为 `ok` 时存在）。 */
+  source?: TeamCostSource
+  /** 读不到的原因（status 为 `no-data` 时存在）。 */
+  reason?: string
+  /** 团队合计；没有任何成员报出的桶保持缺席（≠ 0）。 */
+  totals?: TeamCostBuckets
+  /** 成员分列；status 为 `ok` 时花名册全员出现。 */
+  members?: readonly TeamMemberCost[]
+}

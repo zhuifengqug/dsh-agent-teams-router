@@ -11,12 +11,13 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
+import { assembleTeamCost, isTeamCostSummary } from './cost.ts'
 import { memberActivity } from './members.ts'
 import {
   CAPTAIN_KEY, listArchivedTeamIds, projectTaskRouteActivity, readArchivedTeam, readUnreadMailbox, readTeam,
   taskDepthsById, taskVisualState,
 } from './state.ts'
-import type { MemberStatus, TeamRouteAuditProjection, TeamState, TeamTask } from './types.ts'
+import type { MemberStatus, TeamCostSummary, TeamRouteAuditProjection, TeamState, TeamTask } from './types.ts'
 
 /** Visual task state for the activity panel. */
 export type VisualTaskState = 'blocked' | 'open' | 'running' | 'completed' | 'failed' | 'cancelled'
@@ -102,6 +103,13 @@ export interface TeamActivitySnapshot {
   readonly halted?: boolean
   readonly members: readonly TeamActivityMember[]
   readonly tasks: readonly TeamActivityTask[]
+  /**
+   * Team-level cost summary (DESIGN C.1 data layer; the panel renders the
+   * headline and the per-member popover in step 7). Present with
+   * `status: 'no-data'` and no numbers when no source could be read —
+   * missing data is never a fabricated zero.
+   */
+  readonly cost?: TeamCostSummary
   readonly messageCount: number
   readonly captainInbox: readonly TeamActivityMessage[]
 }
@@ -192,6 +200,13 @@ export async function assembleTeamSnapshot(
     }
   })
   const captainInbox = await readUnreadMailbox(stateRoot, state.id, CAPTAIN_KEY)
+  // Team cost aggregation (DESIGN C.1): probe the host's usage sources per
+  // roster member and fold team totals + per-member rows; the summary always
+  // states its no-data reason instead of fabricating zeros. The snapshot
+  // boundary guard omits a shape regression entirely (better absent than wrong).
+  const cost = await assembleTeamCost(ctx, roster)
+  const costOk = isTeamCostSummary(cost)
+  if (!costOk) ctx.logger.warn('agent-teams: cost summary failed the snapshot shape guard; omitted from the snapshot')
   return {
     workspace,
     teamId: state.id,
@@ -227,6 +242,7 @@ export async function assembleTeamSnapshot(
     })),
     messageCount: captainInbox.length
       + members.reduce((count, member) => count + member.unread, 0),
+    ...(costOk ? { cost } : {}),
     captainInbox: captainInbox.slice(-5).map((message) => ({
       from: message.from,
       content: message.content,
