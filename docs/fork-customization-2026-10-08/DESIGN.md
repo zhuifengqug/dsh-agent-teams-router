@@ -163,18 +163,95 @@ inject: ['agencyAgentsTeams', 'agencyAgentsLibrary', 'agencyAgentsPersona']  // 
 
 ---
 
-## D · UI 改动（待用户定）
+## D · UI 改动（设计语言参照 `dsh-claude-style`）
 
-已观察到的现有 UI：ActivityPanel（分段进度 + 可折叠花名册 + 交互式任务 DAG）、StagingPlanEditor、会话卡、中英实时切换。
+### D.0 参照物与采信边界
 
-**候选（等用户挑选/补充）**：
-1. 路由徽章与 audit popover（= B）
-2. 成员成本列与团队合计（= C.1）
-3. 任务卡显示难度档 + 角色标签
-4. 建团时按 agency 团队选择（= A 的可视化入口，替代敲 `/agent-teams --agency`）
-5. 面板标题区显示"当前生效的 value-router 档位摘要"
+参照插件：`D:\DSHData\home\profiles\desktop\node_modules\dsh-claude-style`。它的设计体系有两层：
 
-> **需要用户明确**：具体想改哪里（花名册？任务板？建团流程？配色密度？）。
+| 文件 | 内容 |
+| --- | --- |
+| `docs/STYLE.md`（661 行 / 44KB） | 逐 token 的配色表（Claude 与 DeepSeek 两套并列）、弹层/搜索/状态行/首页版面等组件的精确尺寸与动画 |
+| `docs/decisions/D*.md`（53 篇 ADR） | 每篇写「决定 / 理由 / 代价 / 重审条件」；编号是稳定标识，被推翻的作废不复用 |
+
+**只采信它的设计语言与尺寸，不抄它的实现手段。** 它大量工作在**改造宿主既有 DOM**（结构辨认 → 打标记 → `!important` 覆盖宿主 inline 值）；AgentTeams 是自带 React 组件、渲染自己的面板，**不需要**那一套。
+
+### D.1 令牌：只用宿主 alias，不写死颜色
+
+- 颜色一律走 `--dsw-alias-*`：`bg-base`、`bg-layer-1/2/3`、`bg-overlay`、`border-l1/l2/l3`、`label-primary/secondary/tertiary/caption`、`brand-primary`、`link`、`state-business-primary/tertiary`、`interactive-bg-hover`。
+- **不新增私有颜色 token**；确需中间色时用 `color-mix()` 从宿主令牌派生。
+- **暗色是基准，亮色用 `:not([data-ds-dark-theme])` 覆盖**。
+- 单一强调色占可见元素 **< 10%**，只用于「当前项 / 选中 / 焦点环」，**不用于普通文字**。
+
+### D.2 形状与节奏
+
+| 项 | 值 |
+| --- | --- |
+| 圆角 | 4 / 8 / 16 px；CTA 用 pill（9999px） |
+| 边框 | 1px `var(--dsw-alias-border-l1)` |
+| 间距 | 4px 节奏 |
+| 字体 | 标题/陈述 serif；UI 与正文宿主 sans；**技术标签用 mono**（provider/model/effort、任务 id、routeKey） |
+| 数字 | 会变化的数字（token、费用、耗时）一律 **tabular figures**，避免跳动 |
+
+### D.3 弹层（B 的 audit popover 直接用这套）
+
+照抄它的弹层基准（ADR D16 + STYLE.md「Popovers」），**不自创第二套卡片**。
+
+**卡片**：背景 `var(--dsw-alias-bg-overlay)`；边框 `1px solid var(--dsw-alias-border-l1)`；圆角 12px；阴影 `0 8px 30px rgba(20,20,19,.12), 0 2px 8px rgba(20,20,19,.06)`；内边距 6px；布局 flex column、`gap: 6px`、列表体行距 3px；层级高于宿主菜单；入场 `opacity 0→1` + `translateY(4px) scale(.98)` → none，`.15s ease`。
+
+**行**：最小高度 32px（下限非上限，两行会撑高）；内边距 `2px 7px`；圆角 6px；文字 13px/20px `label-primary`；悬停 `rgba(0,0,0,.08)`（暗色 `rgba(255,255,255,.08)`）；图标 16px `label-secondary`；两行行 = 名称 13px/16px @500 + 说明 11px/14px `label-tertiary`。
+
+**小标题 / 分隔**：小标题 11px/16px @600、`letter-spacing .04em`、大写、`label-tertiary`、`padding: 6px 7px 2px`；分隔线 1px `border-l1`、`margin: 2px 4px`。
+
+**停留与互斥**：指针进入后 **100ms** 才展开（避免划过误开），离开 **100ms** 后收起；**同一时刻只开一张**（打开前先关其余）。这两个数照抄，不另定。
+
+### D.4 B 落地
+
+- **任务卡**（在既有任务板卡片上增量）：难度徽章（`low/medium/high/max`，mono）+ 最终线路 `provider/model@effort`（mono）。
+- **悬停任务卡 → audit popover**：小标题「路由决策」，其下每个 audit step 一行（两行行：步骤名 + `detail`），带序号。
+- **步骤着色**（只用状态令牌，不引入新色）：
+
+| 步骤 | 表现 |
+| --- | --- |
+| `validate` / `user-route` / `captain-route` / `tier-rotate` / `same-tier-substitute` | 中性 `label-secondary` |
+| `tier-degrade` | `state-business-primary` |
+| `fallback` | `state-business-primary` + 加粗 |
+| `route-rejected` / `blocked` | 宿主 error 令牌（无则该色加深） |
+| `pending` | `label-caption` + 文案「线路未定，等待目录」 |
+
+- **成员行**：显示 `routeKey` 五段拆解（difficulty / role / provider / model / effort），mono，`label-tertiary`。
+- popover 内**只读**，不提供写操作。
+
+### D.5 C.1 落地
+
+直接采用它的数字纪律（ADR D27）：
+
+- **数字只有一个去处**：面板标题区一行摘要（团队合计），明细进一个 popover；**不在成员行里散着一堆数字**。
+- 读数用 **tabular figures**；标签与格式规则**照抄宿主**（宿主有 `formatTokens` / `formatDuration` 之类规则时镜像一份，输出逐字符相同）。
+- **「无数据」≠「零」**：读不到来源时画占位骨架（按真实行高 37px = 16 + 1 + 20、1.6s 脉冲），**不画 0**；骨架 **2s 后放弃**，之后显示 `—`。
+- 每个数字标注来源（哪个投影/账本）。
+
+### D.6 借自它的四条工程纪律
+
+1. **快速失败，不吞错**（ADR D12）：可选宿主服务用 `ctx.get(name) === undefined` 判断（cordis 对缺席服务返回 `undefined`），**不要拿 try/catch 当探测器**；每个允许的 catch 必须在注释里写明原因。
+2. **功能隔离**：每个功能单独安装，装不上就报告一次并退役；teardown **最先注册且幂等**——每个功能是它自己 DOM 标记的唯一清理者。
+3. **样式性能**（ADR D9）：依赖结构的判断由脚本算成属性、CSS 只读属性；`:has()` **只允许出现在选择器最后一段**。实测：非末段 `:has()` 每帧样式重算多 7–13ms，末段仅 0.1–0.5ms。
+4. **样式归属**（ADR D33）：AgentTeams 的规则全部限定在自己的根节点下，避免与皮肤互相认领。
+
+### D.7 明确不做
+
+- **不做吉祥物/像素动画**（螃蟹与 Deepy 是它的品牌资产，与团队面板无关）。
+- **不改造宿主既有 DOM**：无需结构辨认 + `!important` 覆盖那一套。
+- **不新增私有颜色 token**。
+- **不引入图表库**：成本明细用文字行 + 数字，不做热力图/堆叠图。
+
+### D.8 验收
+
+- 亮/暗两主题逐面板检查：颜色全部来自宿主令牌（grep 样式表，无裸十六进制与 `rgb(`）。
+- audit popover：100ms 展开、100ms 收起、同时只开一张；步骤着色与实际 `routeAudit` 一致（造降级 / 兜底 / pending 三场景）。
+- 成本：无数据时先骨架后 `—`，**不出现 `0`**；数字列不跳动。
+- 焦点环用 `brand-primary`，不用自定义色。
+- 选择器检查：无 `:has()` 出现在非末段。
 
 ---
 
