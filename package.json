@@ -37,13 +37,19 @@
     "email": "relakkes@gmail.com",
     "url": "https://github.com/NanmiCoder"
   },
-  "homepage": "https://github.com/NanmiCoder/dsh-agent-teams#readme",
+  "contributors": [
+    {
+      "name": "zhuifengqug",
+      "url": "https://github.com/zhuifengqug"
+    }
+  ],
+  "homepage": "https://github.com/zhuifengqug/dsh-agent-teams-router#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/NanmiCoder/dsh-agent-teams.git"
+    "url": "git+https://github.com/zhuifengqug/dsh-agent-teams-router.git"
   },
   "bugs": {
-    "url": "https://github.com/NanmiCoder/dsh-agent-teams/issues"
+    "url": "https://github.com/zhuifengqug/dsh-agent-teams-router/issues"
   },
   "keywords": [
     "dsh",
