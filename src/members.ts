@@ -740,7 +740,15 @@ export function installMemberDelegationGuard(ctx: Context, stateDir: string, max
       if (descriptor?.label?.startsWith(MEMBER_LABEL_PREFIX)) {
         const identity = descriptor.label.slice(MEMBER_LABEL_PREFIX.length)
         const separator = identity.indexOf(':')
-        const team = readTeamSync(join(ancestor.session.header.cwd ?? process.cwd(), stateDir), identity.slice(0, separator))
+        let team: ReturnType<typeof readTeamSync>
+        try {
+          team = readTeamSync(join(ancestor.session.header.cwd ?? process.cwd(), stateDir), identity.slice(0, separator))
+        } catch (error: unknown) {
+          // Distinguish "team state unreadable" (e.g. a corrupt team.json) from
+          // the guarded rejections below: reject with an actionable message
+          // instead of leaking the raw parse error through subagents.start.
+          throw new Error(`AgentTeams delegation guard could not read the team state of "${identity.slice(0, separator)}" (its team.json may be corrupt or unreadable): ${String(error)}`)
+        }
         const member = team?.members.find(item => item.id === ancestor!.id && item.name === identity.slice(separator + 1))
         if (member === undefined || member.status === 'removed' || member.stopping === true || team?.halted === true) throw new Error('AgentTeams member is no longer admitting delegated work')
         if (depth > maxDepth) throw new Error(`AgentTeams member delegation limit (${maxDepth}) reached; report to the captain instead of spawning another agent`)
