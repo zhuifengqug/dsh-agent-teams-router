@@ -64,6 +64,15 @@ import { StagingPlanEditor } from './StagingPlanEditor.tsx'
 import type { AgentTeamsCardData } from './agent-teams-card-definition.ts'
 import type { AgentTeamsLocaleKey, AgentTeamsTranslate } from './locales.ts'
 import {
+  CostPopover,
+  MemberRouteKey,
+  RouteAuditPopover,
+  TeamCostCell,
+  difficultyBadge,
+  routeLine,
+} from './RouteDetails.tsx'
+
+import {
   DEFAULT_PANEL_LAYOUT,
   PANEL_LAYOUT_STORAGE_KEY,
   compactPanelForBounds,
@@ -80,6 +89,7 @@ import {
   type PanelResizeEdge,
 } from './panel-geometry.ts'
 import css from './ActivityPanel.module.css'
+import routeCss from './RouteDetails.module.css'
 
 /** Grace before the panel collapses once no team remains. */
 const AUTOCLOSE_GRACE_MS = 2000
@@ -210,11 +220,12 @@ function taskRoutingText(task: ActivityTask, t: AgentTeamsTranslate): string {
 
 function taskTitle(task: ActivityTask, model: string): string {
   const routing = task
+  const route = routeLine('', model, routing.reasoningEffort ?? '')
   const extras = [
     task.kind,
     task.round === undefined ? undefined : `r${task.round}`,
     task.verdict,
-    model === '' ? undefined : model,
+    route === '' ? undefined : route,
     routing.difficulty === undefined ? undefined : `difficulty ${routing.difficulty}`,
     routing.routeStatus === undefined ? undefined : `route ${routing.routeStatus}`,
     routing.queueReason,
@@ -493,6 +504,9 @@ function DependencyMap({ tasks, members, t, discarded = false, workspace = false
                   >
                     <span className={css.dagNodeHead}>
                       <span className={css.dagNodeDot} />{task.id}
+                      {/* D.4 strengthened difficulty badge: the existing
+                          `dagOwner` slot keeps its label role and DOM probes,
+                          the mono tier styling lands via the CSS below. */}
                       {routing.difficulty !== undefined && (
                         <span className={css.dagOwner} data-routing-badge="difficulty" data-difficulty={routing.difficulty}>
                           {taskDifficultyLabel(routing.difficulty, t)}
@@ -503,6 +517,14 @@ function DependencyMap({ tasks, members, t, discarded = false, workspace = false
                       )}
                       {workspace && <span className={css.dagOwner}>{task.assignee || t('task.assignee.unclaimed')}</span>}
                     </span>
+                    {/* D.4 resolved route on the card: mono provider/model@effort. */}
+                    {(() => {
+                      const routeText = routeLine('', model, task.reasoningEffort ?? '')
+                      if (routeText === '') return null
+                      return (
+                        <span className={routeCss.taskRouteText} data-task-route-node>{routeText}</span>
+                      )
+                    })()}
                     <span className={css.dagNodeLabel}>
                       {workspace ? task.subject : compactTaskLabel(task.subject)}
                     </span>
@@ -542,6 +564,28 @@ function DependencyMap({ tasks, members, t, discarded = false, workspace = false
             {detailModel !== '' && (
               <span className={css.taskDetailModel} data-task-model={detailModel}>
                 {t('task.model', { model: detailModel })}
+              </span>
+            )}
+            {/* D.4/D.5: resolved route provider/model@effort (mono) plus the
+                strengthened difficulty chip; hover opens the audit popover. */}
+            {detailRouting.difficulty !== undefined && (
+              <span className={routeCss.taskRouteLine} data-task-route-line>
+                {difficultyBadge(detailRouting, t)}
+                <span className={routeCss.taskRouteText}>
+                  {routeLine('', detailModel, detailRouting.reasoningEffort ?? '')}
+                </span>
+              </span>
+            )}
+            {detailModel !== '' && detailRouting.difficulty === undefined && (
+              <span className={routeCss.taskRouteLine} data-task-route-line>
+                <span className={routeCss.taskRouteText}>
+                  {routeLine('', detailModel, detailRouting.reasoningEffort ?? '')}
+                </span>
+              </span>
+            )}
+            {detailRouting.routeAudit !== undefined && detailRouting.routeAudit.entries.length > 0 && (
+              <span className={routeCss.taskRouteLine} data-task-audit-line>
+                <RouteAuditPopover task={detailRouting} t={t} popoverKey={`${detailTask.id}:detail`} />
               </span>
             )}
             {detailRoutingText !== '' && (
@@ -640,6 +684,12 @@ export function TeamSection({ team, modelDirectory, onContinuePlanning, onDiscar
             <span data-stat="tasks">{t('team.stats.completed', { completed: completedCount, total: team.tasks.length })}</span>
             <span data-stat="messages">{t('team.stats.messages', { count: team.messageCount })}</span>
           </span>
+          {/* C.1/D.5: the one team-total cost number lives in the header; the
+              per-member breakdown opens in the shared popover. */}
+          <TeamCostCell cost={team.cost} t={t} />
+          {team.cost !== undefined && (
+            <CostPopover cost={team.cost} t={t} popoverKey={`${team.teamId}:cost`} />
+          )}
           {canStop && (
             <button
               type="button"
@@ -764,6 +814,9 @@ export function TeamSection({ team, modelDirectory, onContinuePlanning, onDiscar
                           {compactModelLabel(memberModel)}
                         </span>
                       )}
+                      {/* B member view: routeKey five-segment decomposition
+                          (difficulty/role/route) in mono label-tertiary. */}
+                      <MemberRouteKey member={member} />
                       <span className={css.memberState} data-activity={member.activity}>
                         <WorkGlyph active={member.activity === 'working'} />
                         {discarded
@@ -810,6 +863,11 @@ export function TeamSection({ team, modelDirectory, onContinuePlanning, onDiscar
                               title={taskTitle(task, model)}
                             >
                               {task.state === 'running' && shortModel !== '' ? `${task.id} · ${shortModel}` : task.id}
+                              {task.state === 'running' && task.routeAudit !== undefined && task.routeAudit.entries.length > 0 && (
+                                <span className={routeCss.auditAnchor} data-task-audit-chip>
+                                  <RouteAuditPopover task={task} t={t} popoverKey={`${team.teamId}:${member.name}:${task.id}:chip`} />
+                                </span>
+                              )}
                             </span>
                           )
                         })}

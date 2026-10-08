@@ -16,6 +16,57 @@ export interface ActivityMember {
     readonly currentTask: string;
     readonly unread: number;
 }
+/**
+ * One measured cost figure plus the source that produced it (mirrors the host
+ * `TeamCostMetric` closed set). Missing buckets are missing data, never zero.
+ */
+export interface ActivityCostMetric {
+    readonly value: number;
+    readonly source: string;
+}
+/** One cost bucket row (mirrors the host `TeamCostBuckets`). */
+export interface ActivityCostBuckets {
+    readonly inputTokens?: ActivityCostMetric;
+    readonly outputTokens?: ActivityCostMetric;
+    readonly cacheReadTokens?: ActivityCostMetric;
+    readonly cacheWriteTokens?: ActivityCostMetric;
+    readonly costEstimate?: ActivityCostMetric;
+}
+/** One member cost row (mirrors the host `TeamMemberCost`). */
+export interface ActivityMemberCost {
+    readonly memberId: string;
+    readonly memberName: string;
+    readonly reading?: ActivityCostBuckets;
+    readonly attributedSubsessions?: number;
+}
+/** Team-level cost summary (mirrors the host `TeamCostSummary`). */
+export interface ActivityCostSummary {
+    readonly status: 'ok' | 'no-data';
+    readonly source?: string;
+    readonly reason?: string;
+    readonly totals?: ActivityCostBuckets;
+    readonly members?: readonly ActivityMemberCost[];
+}
+/** One bounded route-audit step (mirrors the host `TeamRouteAuditStep`). */
+export interface ActivityRouteAuditStep {
+    readonly at: number;
+    readonly step: string;
+    readonly outcome: string;
+    readonly detail: string;
+    readonly tier?: string;
+    readonly route?: {
+        readonly provider?: string;
+        readonly model?: string;
+        readonly reasoning_effort?: string;
+        readonly status?: string;
+    };
+}
+/** Bounded audit projection (mirrors the host `TeamRouteAuditProjection`). */
+export interface ActivityRouteAuditProjection {
+    readonly entries: readonly ActivityRouteAuditStep[];
+    readonly total: number;
+    readonly truncated: number;
+}
 /** One task row of a host snapshot. */
 export interface ActivityTask {
     readonly id: string;
@@ -38,6 +89,14 @@ export interface ActivityTask {
     readonly routeStatus?: string;
     /** Where the resolved route came from: `user` | `captain` | `difficulty` | `fallback` | `none`. */
     readonly routeSource?: string;
+    /** Bounded audit trail of the last route resolution (host step-5 projection). */
+    readonly routeAudit?: ActivityRouteAuditProjection;
+    /** The last resolution degraded to a lower difficulty tier (`tier-degrade` step). */
+    readonly degraded?: boolean;
+    /** The last resolution used the global fallback route. */
+    readonly fallback?: boolean;
+    /** Reasoning effort of the resolved route, when one exists and is set. */
+    readonly reasoningEffort?: string;
     /**
      * Why this task is waiting instead of running.
      *
@@ -64,6 +123,12 @@ export interface ActivityTeam {
     readonly halted?: boolean;
     readonly members: readonly ActivityMember[];
     readonly tasks: readonly ActivityTask[];
+    /**
+     * Team-level cost summary (DESIGN C.1). Present with `status: 'no-data'` and
+     * no numbers when no usage source could be read — missing data is never a
+     * fabricated zero.
+     */
+    readonly cost?: ActivityCostSummary;
     readonly messageCount: number;
     readonly captainInbox: readonly ActivityMessage[];
 }

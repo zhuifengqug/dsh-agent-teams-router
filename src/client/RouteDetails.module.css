@@ -1,0 +1,375 @@
+/* Route & cost presentation layer (DESIGN D, step 7).
+ *
+ * Every color comes from a host --dsw-alias-* token; the only literal color in
+ * this file is the popover drop shadow, which DESIGN D.3 grants as an
+ * elevation exemption (shadows are not theme colors). Rules are scoped under
+ * this panel's own class roots. */
+
+/* ── D.3 popover card baseline ─────────────────────────────────────────── */
+
+.auditAnchor {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+
+.popoverCard {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 6px);
+  left: 0;
+  display: flex;
+  max-width: 340px;
+  min-width: 200px;
+  flex-direction: column;
+  gap: 6px;
+  box-sizing: border-box;
+  padding: 6px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  /* DESIGN D.3 elevation exemption: shadow literal, not a theme color. */
+  box-shadow: 0 8px 30px rgba(20, 20, 19, 0.12), 0 2px 8px rgba(20, 20, 19, 0.06);
+  background: var(--dsw-alias-bg-overlay);
+  animation: routePopoverIn 0.15s ease;
+}
+
+@keyframes routePopoverIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.popoverHeading {
+  padding: 6px 7px 2px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 16px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.popoverList {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* D.3 row: 32px floor, 2px 7px padding, 6px radius; hover token, no rgba. */
+.auditRow,
+.costRow {
+  display: flex;
+  min-height: 32px;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+
+.auditRow:hover,
+.costRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* ── B: route audit popover rows (D.4 color table) ─────────────────────── */
+
+.auditIndex {
+  flex: none;
+  min-width: 12px;
+  padding-top: 2px;
+  color: var(--dsw-alias-label-tertiary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  line-height: 14px;
+  text-align: right;
+}
+
+.auditRowBody {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.auditStepName {
+  display: inline-flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.auditStep {
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auditOutcome {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 9px;
+  line-height: 14px;
+}
+
+.auditDetail {
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 9.5px;
+  line-height: 14px;
+  white-space: normal;
+}
+
+.auditRoute {
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* D.4: neutral steps stay label-secondary; degrade/fallback speak with the
+ * business token; rejected/blocked escalate to the host error token. */
+.auditRow[data-tone='neutral'] .auditStep {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.auditRow[data-tone='business'] .auditStep {
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.auditRow[data-tone='businessStrong'] .auditStep {
+  color: var(--dsw-alias-state-business-primary);
+  font-weight: 700;
+}
+
+.auditRow[data-tone='error'] .auditStep,
+.auditRow[data-tone='error'] .auditDetail {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.auditRow[data-tone='pending'] .auditStep,
+.auditRow[data-tone='pending'] .auditDetail {
+  color: var(--dsw-alias-label-caption);
+}
+
+/* ── Task card: difficulty badge + resolved route (mono) ───────────────── */
+
+.difficultyBadge {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 4px;
+  color: var(--dsw-alias-label-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 8.5px;
+  font-weight: 700;
+  line-height: 13px;
+  white-space: nowrap;
+}
+
+.difficultyBadge[data-difficulty='high'] {
+  color: var(--dsw-alias-state-warn-primary);
+  border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 45%, var(--dsw-alias-border-l2));
+}
+
+.difficultyBadge[data-difficulty='max'] {
+  color: var(--dsw-alias-state-error-primary);
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, var(--dsw-alias-border-l2));
+}
+
+.taskRouteLine {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.taskRouteText {
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Popover triggers (shared shape) ───────────────────────────────────── */
+
+.auditTrigger {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 3px;
+  color: var(--dsw-alias-label-tertiary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 8.5px;
+  line-height: 14px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.auditAnchor:hover .auditTrigger {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.auditAnchor[data-open] .auditTrigger {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.auditTruncated {
+  color: var(--dsw-alias-label-caption);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ── C.1: team cost cell + member rows (D.5) ───────────────────────────── */
+
+.costCell {
+  display: inline-flex;
+  flex: none;
+  align-items: baseline;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.costCellLabel {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 9.5px;
+  line-height: 16px;
+}
+
+.costCellValue {
+  color: var(--dsw-alias-label-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+/* D.5 skeleton: the real row height (16px label line + 1px + 20px figure
+ * line = 37px) with a 1.6s pulse; it never shows a number. */
+.costCellSkeleton {
+  display: inline-block;
+  width: 64px;
+  height: 37px;
+  flex: none;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--dsw-alias-label-tertiary) 22%, transparent);
+  animation: costSkeletonPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes costSkeletonPulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+.costCellNoData {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.costRow {
+  align-items: baseline;
+}
+
+.costRowName {
+  flex: none;
+  min-width: 68px;
+  max-width: 120px;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.costRowBuckets {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.costBucket {
+  display: inline-flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.costBucketLabel {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 8.5px;
+  line-height: 14px;
+}
+
+.costBucketValue {
+  color: var(--dsw-alias-label-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  line-height: 14px;
+}
+
+.costRowSource {
+  flex: none;
+  align-self: flex-start;
+  padding-top: 2px;
+  color: var(--dsw-alias-label-caption);
+  font-size: 8px;
+  line-height: 12px;
+}
+
+/* ── B member view: routeKey five-segment chip ─────────────────────────── */
+
+.routeKeyChip {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 8.5px;
+  line-height: 14px;
+}
+
+.routeKeySeg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.routeKeySeg + .routeKeySeg::before {
+  color: var(--dsw-alias-label-caption);
+  content: '·';
+  margin-right: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popoverCard,
+  .costCellSkeleton {
+    animation: none;
+  }
+}
