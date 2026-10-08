@@ -389,13 +389,15 @@ function ProgressOverview({ team, t, discarded = false }: { readonly team: Activ
   )
 }
 
-function DependencyMap({ tasks, members, t, discarded = false, workspace = false, onSelectTask }: {
+function DependencyMap({ tasks, members, t, discarded = false, workspace = false, onSelectTask, popoverScope }: {
   readonly tasks: readonly ActivityTask[]
   readonly members: readonly ActivityMember[]
   readonly t: AgentTeamsTranslate
   readonly discarded?: boolean
   readonly workspace?: boolean
   readonly onSelectTask?: (id: string | null) => void
+  /** Disambiguates the one-popover-at-a-time registry across teams. */
+  readonly popoverScope: string
 }) {
   const [open, setOpen] = useState(true)
   const [hoverTaskId, setHoverTaskId] = useState<string | null>(null)
@@ -585,7 +587,7 @@ function DependencyMap({ tasks, members, t, discarded = false, workspace = false
             )}
             {detailRouting.routeAudit !== undefined && detailRouting.routeAudit.entries.length > 0 && (
               <span className={routeCss.taskRouteLine} data-task-audit-line>
-                <RouteAuditPopover task={detailRouting} t={t} popoverKey={`${detailTask.id}:detail`} />
+                <RouteAuditPopover task={detailRouting} t={t} popoverKey={`${popoverScope}:${detailTask.id}:detail`} />
               </span>
             )}
             {detailRoutingText !== '' && (
@@ -881,7 +883,7 @@ export function TeamSection({ team, modelDirectory, onContinuePlanning, onDiscar
         })()}
       </section>
 
-      <DependencyMap tasks={team.tasks} members={team.members} t={t} discarded={discarded} workspace={workspace} onSelectTask={setSelectedTaskId} />
+      <DependencyMap tasks={team.tasks} members={team.members} t={t} discarded={discarded} workspace={workspace} onSelectTask={setSelectedTaskId} popoverScope={team.teamId} />
       </section>
       <Modal
         open={stopOpen}
