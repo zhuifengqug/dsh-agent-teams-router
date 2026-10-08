@@ -223,6 +223,19 @@ export declare function readArchivedTeam(stateRoot: string, teamId: string): Pro
  * @returns the archived team ids, empty when the archive does not exist.
  */
 export declare function listArchivedTeamIds(stateRoot: string): Promise<string[]>;
+/**
+ * Permanently delete one archived team directory. Deletion is the user's
+ * explicit authorization (2026-10-08 ruling): the directory is removed
+ * directly with no backup copy. `teamId` is only ever matched against the
+ * exact ids reported by {@link listArchivedTeamIds} — it is never used to
+ * build a path before that match — so a crafted id cannot escape
+ * `<stateRoot>/archive/`.
+ * @param stateRoot - resolved absolute state root directory.
+ * @param teamId - the archived team id.
+ * @returns whether the archived directory existed and was removed; `false`
+ * when it was already gone (idempotent repeat), never an error.
+ */
+export declare function deleteArchivedTeam(stateRoot: string, teamId: string): Promise<boolean>;
 /** Visual task state for the activity panel. */
 export type VisualTaskState = 'blocked' | 'open' | 'running' | 'completed' | 'failed' | 'cancelled';
 /**

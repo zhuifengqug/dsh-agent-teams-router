@@ -38,7 +38,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { collectArchivedTeamsActivity, collectTeamsActivity } from './snapshot.ts'
-import { findTeamByCaptain } from './state.ts'
+import { deleteArchivedTeam, findTeamByCaptain, listArchivedTeamIds, readArchivedTeam } from './state.ts'
 import { formatProfilesForPrompt, type TeamProfileConfig } from './profiles.ts'
 import { installTeamCapabilities } from './capabilities.ts'
 import { TEAM_TOOL_NAMES } from './tool-names.ts'
@@ -479,6 +479,63 @@ export function apply(ctx: Context, config: Config): void {
         }
       },
     }), 'agent-teams: plan route')
+
+    // Permanently delete one archived team (panel "archive delete" button).
+    // Unlike /halt and /plan this route deliberately does NOT check for a live
+    // captain session: an archived team's captain conversation is normally
+    // already released, so ownership is bound to the durable
+    // `team.json.captainSessionId` instead (2026-10-08 E-section ruling). The
+    // teamId is matched exactly against `listArchivedTeamIds` — never spliced
+    // into a path before that match — so a crafted id cannot escape the
+    // archive directory.
+    ctx.effect(() => webServer.register({
+      kind: 'exact',
+      path: '/plugins/dsh-agent-teams/archive-delete',
+      handler: async (req, res) => {
+        if (req.method !== 'POST') {
+          res.writeHead(405, { allow: 'POST', 'cache-control': 'no-store' })
+          res.end()
+          return
+        }
+        let payload: Record<string, unknown>
+        try {
+          payload = await readJsonRequest(req)
+        } catch (error: unknown) {
+          res.writeHead(error instanceof RequestBodyError ? error.status : 400, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message : 'invalid request body' }))
+          return
+        }
+        const sessionId = typeof payload['sessionId'] === 'string' ? payload['sessionId'].trim() : ''
+        const teamId = typeof payload['teamId'] === 'string' ? payload['teamId'].trim() : ''
+        if (sessionId === '' || teamId === '') {
+          res.writeHead(400, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
+          res.end(JSON.stringify({ error: 'sessionId and teamId are required' }))
+          return
+        }
+        // Ownership binding: scan every workspace root for an archive whose
+        // durable captainSessionId matches the requesting session.
+        const roots = workspaceRegistry.list().map((workspace) => join(workspace.path, resolved.stateDir))
+        for (const stateRoot of roots) {
+          const archivedIds = await listArchivedTeamIds(stateRoot)
+          if (!archivedIds.includes(teamId)) continue
+          const archived = await readArchivedTeam(stateRoot, teamId)
+          if (archived === undefined || archived.captainSessionId !== sessionId) break
+          try {
+            await deleteArchivedTeam(stateRoot, teamId)
+          } catch (error: unknown) {
+            ctx.logger.warn(`agent-teams: archive delete failed for ${teamId}: ${String(error)}`)
+            res.writeHead(500, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
+            res.end(JSON.stringify({ error: 'failed to delete the archived team' }))
+            return
+          }
+          res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
+          res.end(JSON.stringify({ ok: true, teamId }))
+          return
+        }
+        res.writeHead(404, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
+        res.end(JSON.stringify({ error: 'archived team not found for this session' }))
+      },
+    }), 'agent-teams: archive-delete route')
 
   // Whale mascot artwork: serve the packaged V2 role/action images to the
   // activity panel. An explicit allowlist guards the route (no path

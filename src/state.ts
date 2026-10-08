@@ -1067,6 +1067,25 @@ export async function listArchivedTeamIds(stateRoot: string): Promise<string[]> 
   }
 }
 
+/**
+ * Permanently delete one archived team directory. Deletion is the user's
+ * explicit authorization (2026-10-08 ruling): the directory is removed
+ * directly with no backup copy. `teamId` is only ever matched against the
+ * exact ids reported by {@link listArchivedTeamIds} — it is never used to
+ * build a path before that match — so a crafted id cannot escape
+ * `<stateRoot>/archive/`.
+ * @param stateRoot - resolved absolute state root directory.
+ * @param teamId - the archived team id.
+ * @returns whether the archived directory existed and was removed; `false`
+ * when it was already gone (idempotent repeat), never an error.
+ */
+export async function deleteArchivedTeam(stateRoot: string, teamId: string): Promise<boolean> {
+  const archivedIds = await listArchivedTeamIds(stateRoot)
+  if (!archivedIds.includes(teamId)) return false
+  await rm(join(stateRoot, 'archive', teamId), { recursive: true, force: true })
+  return true
+}
+
 // ── activity snapshot (server-side, like the Claude Code desktop watcher) ──
 
 /** Visual task state for the activity panel. */

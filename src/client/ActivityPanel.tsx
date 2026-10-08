@@ -48,9 +48,11 @@ import {
   usesParallelTaskGrid,
 } from './activity-model.ts'
 import {
+  ACTIVITY_ARCHIVE_DELETE_URL,
   ACTIVITY_HALT_URL,
   getActivityMonitorTargetsSnapshot,
   getActivitySnapshotsSnapshot,
+  pruneArchivedTeamLocally,
   startActivityPolling,
   subscribeActivityMonitorTargets,
   subscribeActivitySnapshots,
@@ -932,6 +934,96 @@ export function historicCardTeam(data: AgentTeamsCardData, owner: string): Activ
   }
 }
 
+/** Permanently delete one archived team with a two-click confirmation.
+ *
+ * First click arms the row (confirm/cancel replace the delete label; Escape,
+ * blur, or the cancel button disarms). The second click POSTs to the host
+ * route; success prunes the row from the shared archive store immediately and
+ * the next poll reconciles the authoritative list; failure restores the
+ * button and surfaces the error text inline.
+ */
+function ArchiveDeleteButton({ team, t, onDeleted }: {
+  readonly team: ActivityTeam
+  readonly t: AgentTeamsTranslate
+  readonly onDeleted: (teamId: string) => void
+}) {
+  const [armed, setArmed] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState('')
+  const deleteArchived = async (): Promise<void> => {
+    if (deleting) return
+    setDeleting(true)
+    setError('')
+    try {
+      const response = await fetch(ACTIVITY_ARCHIVE_DELETE_URL, {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sessionId: team.captainSessionId, teamId: team.teamId }),
+      })
+      if (!response.ok) {
+        let message = t('archive.deleteFailed', { message: response.status })
+        try {
+          const body = await response.json() as { error?: unknown }
+          if (typeof body.error === 'string' && body.error.trim() !== '') message = t('archive.deleteFailed', { message: body.error })
+        } catch {}
+        throw new Error(message)
+      }
+      setArmed(false)
+      onDeleted(team.teamId)
+    } catch (caught: unknown) {
+      setArmed(false)
+      setError(caught instanceof Error ? caught.message : t('archive.deleteFailed', { message: String(caught) }))
+    } finally {
+      setDeleting(false)
+    }
+  }
+  useEffect(() => {
+    if (!armed) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setArmed(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => { window.removeEventListener('keydown', onKeyDown) }
+  }, [armed])
+  return (
+    <span className={css.archiveDeleteWrap} data-archive-delete>
+      {error !== '' && <span className={css.archiveDeleteError} role="alert">{error}</span>}
+      {armed && (
+        <button
+          type="button"
+          className={css.archiveDeleteButton}
+          data-archive-delete-cancel
+          disabled={deleting}
+          onClick={() => { setError(''); setArmed(false) }}
+        >
+          {t('archive.deleteCancel')}
+        </button>
+      )}
+      <button
+        type="button"
+        className={css.archiveDeleteButton}
+        data-archive-delete={armed ? 'confirm' : 'arm'}
+        data-danger={armed || undefined}
+        aria-label={t('archive.deleteAria')}
+        disabled={deleting}
+        onBlur={(event) => {
+          // Disarm on focus loss, unless the pointer moved into the sibling
+          // cancel/confirm controls (the wrap keeps them adjacent).
+          if (armed && !event.currentTarget.parentElement?.matches(':hover')) setArmed(false)
+        }}
+        onClick={() => {
+          setError('')
+          if (armed) void deleteArchived()
+          else setArmed(true)
+        }}
+      >
+        {deleting ? '…' : t(armed ? 'archive.deleteConfirm' : 'archive.delete')}
+      </button>
+    </span>
+  )
+}
+
 /** The top-right activity floater. Teams follow the current session: live
  * snapshots and historic card summaries are only shown while their captain
  * session is the one currently open. */
@@ -1427,7 +1519,12 @@ export function ActivityPanel({ sessionsList, modelDirectories, openMember, t, c
                   ))}
                   {visibleArchived.map((team) => (
                     <div key={`${team.captainSessionId}:${team.teamId}`} data-team-id={team.teamId} data-historic className={css.archivedWrap}>
-                      <span className={css.archiveLabel}>{t(team.phase === 'staged' ? 'archive.discardedLabel' : 'archive.label')}</span>
+                      <span className={css.archiveHead}>
+                        <span className={css.archiveLabel}>{t(team.phase === 'staged' ? 'archive.discardedLabel' : 'archive.label')}</span>
+                        {/* Two-click permanent delete: real archived rows only
+                            (legacy card projections have no archive directory). */}
+                        <ArchiveDeleteButton team={team} t={t} onDeleted={pruneArchivedTeamLocally} />
+                      </span>
                       <TeamSection team={team} onNavigate={navigateToSession} t={t} historic />
                     </div>
                   ))}

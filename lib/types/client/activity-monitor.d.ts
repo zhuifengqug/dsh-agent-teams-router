@@ -174,6 +174,16 @@ export declare const ACTIVITY_PROBE_MS = 5000;
 /** Host route serving live and archived team snapshots. */
 export declare const ACTIVITY_STATE_URL = "/plugins/dsh-agent-teams/state";
 export declare const ACTIVITY_HALT_URL = "/plugins/dsh-agent-teams/halt";
+/** Host route that permanently deletes one archived team (panel archive row). */
+export declare const ACTIVITY_ARCHIVE_DELETE_URL = "/plugins/dsh-agent-teams/archive-delete";
+/**
+ * Remove one deleted archived team from the shared snapshot store locally.
+ *
+ * The host deletes durably; this only prunes the client view so the row
+ * disappears immediately. The next polling cycle reconciles the authoritative
+ * live/archive lists either way, so a missed prune self-heals.
+ */
+export declare function pruneArchivedTeamLocally(teamId: string): void;
 interface ActivityFetchResponse {
     readonly ok: boolean;
     json(): Promise<unknown>;
