@@ -942,7 +942,7 @@ export function historicCardTeam(data: AgentTeamsCardData, owner: string): Activ
  * the next poll reconciles the authoritative list; failure restores the
  * button and surfaces the error text inline.
  */
-function ArchiveDeleteButton({ team, t, onDeleted }: {
+export function ArchiveDeleteButton({ team, t, onDeleted }: {
   readonly team: ActivityTeam
   readonly t: AgentTeamsTranslate
   readonly onDeleted: (teamId: string) => void

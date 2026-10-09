@@ -8,6 +8,10 @@
   font-family: inherit;
 }
 .content { max-width: 1400px; margin: 0 auto; padding: 12px 20px 28px; }
+/* Archived-team action bar: label + permanent delete, pinned above the card so
+   the affordance is visible without scrolling or hovering. */
+.archiveBar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; padding: 6px 10px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; background: var(--dsw-alias-bg-layer-1); }
+.archiveBarLabel { font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-secondary); }
 .selector { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 24px; }
 .selector button { display: flex; gap: 12px; align-items: center; max-width: 100%; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 8px 10px; text-align: left; overflow-wrap: anywhere; }
 .selector span { font-size: 10px; color: var(--dsw-alias-label-tertiary); white-space: nowrap; }

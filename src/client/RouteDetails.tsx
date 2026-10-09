@@ -309,22 +309,29 @@ export function TeamCostCell({ cost, t }: {
 }
 
 /**
- * Member row routeKey chip (B member view): five segments in mono
- * `label-tertiary`, hidden entirely when the member has no frozen key parts.
+ * Member row routeKey chip (B member view): the slot-identity segments the
+ * member's own model badge does not already show, in mono `label-tertiary`.
+ *
+ * The member row already renders a compact model badge on the left, so the
+ * `model` segment is intentionally left out here (2026-10-09 user decision:
+ * one model label per row, not two). The full five-segment key stays in the
+ * `title` and on the data attributes.
  */
 export function MemberRouteKey({ member }: {
   readonly member: Parameters<typeof memberRouteKeyParts>[0]
 }) {
-  const { difficulty, role, provider, model, effort } = memberRouteKeyParts(member)
-  if (difficulty === '' && role === '' && provider === '' && model === '' && effort === '') return null
+  const parts = memberRouteKeyParts(member)
+  const { difficulty, role, provider, model, effort } = parts
+  const shown = [difficulty, role, provider, effort].filter((part) => part !== '')
+  if (shown.length === 0) return null
   return (
     <span className={css.routeKeyChip} data-route-key data-monospace-label
       title={[difficulty, role, provider, model, effort].filter((part) => part !== '').join(' / ')}
+      data-route-key-model={model === '' ? undefined : model}
     >
       {difficulty !== '' && <span className={css.routeKeySeg} data-route-key-seg="difficulty">{difficulty}</span>}
       {role !== '' && <span className={css.routeKeySeg} data-route-key-seg="role">{role}</span>}
       {provider !== '' && <span className={css.routeKeySeg} data-route-key-seg="provider">{provider}</span>}
-      {model !== '' && <span className={css.routeKeySeg} data-route-key-seg="model">{model}</span>}
       {effort !== '' && <span className={css.routeKeySeg} data-route-key-seg="effort">{effort}</span>}
     </span>
   )

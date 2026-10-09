@@ -158,7 +158,7 @@ export function agencyServicesOf(ctx: { get(key: never): unknown }) {
    - 任务卡上显示难度徽章（`low/medium/high/max`）+ 最终线路（`provider/model@effort`）
    - 悬停/展开 popover：按 sequence 列出 audit steps（`validate` → `user-route`/`captain-route`/`route-rejected`/`tier-rotate`/`same-tier-substitute`/`tier-degrade`/`fallback`/`pending`），每步带 `status` 与 `detail`
    - 降级/兜底用不同色重（`tier-degrade` 黄、`fallback` 橙、`blocked` 红）
-3. **成员视角（步 7）**：成员行显示其 `routeKey` 拆解（difficulty / role / provider / model / effort 五段）。
+3. **成员视角（步 7）**：成员行显示其 `routeKey` 拆解（difficulty / role / provider / effort；`model` 段由该行左侧的模型徽章承担，见 D.4）。
 
 ### B.3 验收
 - 步 5 单测：audit 截断+计数、字段缺失不炸、`degraded`/`fallback` 标志透传。
@@ -260,7 +260,7 @@ export function agencyServicesOf(ctx: { get(key: never): unknown }) {
 | `route-rejected` / `blocked` | 宿主 error 令牌（无则该色加深） |
 | `pending` | `label-caption` + 文案「线路未定，等待目录」 |
 
-- **成员行**：显示 `routeKey` 五段拆解（difficulty / role / provider / model / effort），mono，`label-tertiary`。
+- **成员行**：显示 `routeKey` 拆解（difficulty / role / provider / effort），mono，`label-tertiary`。**`model` 段不重复显示**——同一行左侧已有宿主原生的模型徽章（`css.memberModel`），两处都写模型是冗余（2026-10-09 用户实测后裁决：一行只留一个模型标签）；完整五段键仍保留在 `title` 与 `data-route-key`/`data-route-key-model` 上，DOM 探针与无障碍名称不受影响。
 - popover 内**只读**，不提供写操作。
 
 ### D.5 C.1 落地
@@ -306,7 +306,9 @@ export function agencyServicesOf(ctx: { get(key: never): unknown }) {
 
 **Host 路由**（`src/index.ts` `POST /plugins/dsh-agent-teams/archive-delete`）：包在 `authenticatedWebRoutes` 门内，照 `/halt`/`/plan` 模式（非 POST 405、缺参 400）。与它们的**关键差异**：不查活体队长会话——归档团队的队长会话通常已释放，`ctx.agents.get(sessionId)` 必然 miss；所有权改为绑定到归档 `team.json` 的 `captainSessionId`（遍历 workspaceRegistry 根，`listArchivedTeamIds` + `readArchivedTeam` 找到 `teamId` 且 `captainSessionId === payload.sessionId` 才删）。命中 200 `{ok,teamId}`；不存在/不匹配 404 `{error:'archived team not found for this session'}`。
 
-**UI**：删除按钮只出现在 `visibleArchived` 卡（真实归档目录）；**两击确认**——第一击进入确认态（文案切换 + 取消按钮，Esc/失焦任一退出），第二击 POST；成功后本地剔除该归档行（`pruneArchivedTeamLocally`，下一轮轮询自然收敛权威列表）；失败恢复按钮并展示错误。`visibleHistoric`（legacy 会话卡投影，无归档目录）**不加按钮**。
+**UI**：删除按钮只出现在**真实归档目录**（`visibleArchived` / 工作区面板的 `archived` 记录）；**两击确认**——第一击进入确认态（文案切换 + 取消按钮，Esc/失焦任一退出），第二击 POST；成功后本地剔除该归档行（`pruneArchivedTeamLocally`，下一轮轮询自然收敛权威列表）；失败恢复按钮并展示错误。`visibleHistoric`（legacy 会话卡投影，无归档目录）**不加按钮**。
+
+**放置（2026-10-09 用户实测后调整）**：活体走查时「团队协作」工作区面板（`WorkspaceActivity`）看不到按钮——它原先只挂在浮窗 `ActivityPanel` 的归档卡头上，而该面板是另一个渲染面。现在选中归档团队时，**工作区面板内容区顶部固定一条归档动作栏**（`data-archive-bar`：左侧「已结束 · 历史归档」标签 + 右侧删除按钮），不必滚动或悬停即可看到；浮窗内的按钮保留。
 
 **三个默认值裁决（2026-10-08）**：
 1. 所有权绑定不要求活体队长——durables 对 durables，归档目录的 `captainSessionId` 即授权凭据。

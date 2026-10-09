@@ -2,11 +2,11 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ISidebarRight } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
-import { ActivityPanel, TeamSection, historicCardTeam, type ActivityPanelProps } from './ActivityPanel.tsx'
+import { ActivityPanel, ArchiveDeleteButton, TeamSection, historicCardTeam, type ActivityPanelProps } from './ActivityPanel.tsx'
 import { OPEN_PANEL_EVENT } from './AgentTeamsCard.tsx'
 import type { AgentTeamsCardData } from './agent-teams-card-definition.ts'
 import { currentSessionId } from './session-navigation.ts'
-import { getActivityMonitorTargetsSnapshot, getActivitySnapshotsSnapshot, startActivityPolling, subscribeActivityMonitorTargets, subscribeActivitySnapshots, updateActivitySnapshots } from './activity-monitor.ts'
+import { getActivityMonitorTargetsSnapshot, getActivitySnapshotsSnapshot, pruneArchivedTeamLocally, startActivityPolling, subscribeActivityMonitorTargets, subscribeActivitySnapshots, updateActivitySnapshots } from './activity-monitor.ts'
 import { createTeamDiscovery, type WorkspaceActivityState } from './workspace-state.ts'
 import css from './WorkspaceActivity.module.css'
 
@@ -95,6 +95,9 @@ export function WorkspaceActivity({ sessionId, useTabInfo, t, state, modelDirect
   const records = [...live, ...archived, ...historic]
   const selected = records.find(team => team.teamId === local.selected.get(sessionId)) ?? records[0]
   const history = selected !== undefined && !live.includes(selected)
+  // Only a real archive directory can be deleted; legacy card projections and
+  // live teams must never offer the button (DESIGN E 默认值 ③).
+  const archivedSelected = selected === undefined ? undefined : archived.find(team => team.teamId === selected.teamId)
   const status = local.statuses.get(sessionId) ?? 'loading'
   // Explicit reconnect is bounded and cleaned up; ordinary polling is owned by the monitor.
   useEffect(() => {
@@ -112,6 +115,15 @@ export function WorkspaceActivity({ sessionId, useTabInfo, t, state, modelDirect
     <div className={css.root} data-agent-teams-workspace data-session-id={sessionId}>
       <div className={css.content}>
         {status === 'error' && <div className={css.error} role="alert"><span>{t('workspace.error')}</span><button onClick={() => setRetry(value => value + 1)}>{t('workspace.retry')}</button></div>}
+        {archivedSelected !== undefined && (
+          /* Archive actions sit at the top of the pane, above the team card, so
+             the permanent-delete affordance is visible without hunting for it
+             (2026-10-09 user request). Only real archive directories get it. */
+          <div className={css.archiveBar} data-archive-bar>
+            <span className={css.archiveBarLabel}>{t(archivedSelected.phase === 'staged' ? 'archive.discardedLabel' : 'archive.label')}</span>
+            <ArchiveDeleteButton team={archivedSelected} t={t} onDeleted={pruneArchivedTeamLocally} />
+          </div>
+        )}
         {records.length > 1 && <nav className={css.selector} aria-label={t('workspace.title')}>
           {records.map(team => <button key={team.teamId} aria-pressed={selected?.teamId === team.teamId} onClick={() => state.select(sessionId, team.teamId)}>{team.name}<span>{t(live.includes(team) ? 'workspace.current' : 'workspace.history')}</span></button>)}
         </nav>}

@@ -38,6 +38,19 @@ export declare function TeamSection({ team, modelDirectory, onContinuePlanning, 
 /** Legacy conversation cards may outlive their host archive. Project their
  * durable roster through the same rebuilt panel instead of a second UI. */
 export declare function historicCardTeam(data: AgentTeamsCardData, owner: string): ActivityTeam;
+/** Permanently delete one archived team with a two-click confirmation.
+ *
+ * First click arms the row (confirm/cancel replace the delete label; Escape,
+ * blur, or the cancel button disarms). The second click POSTs to the host
+ * route; success prunes the row from the shared archive store immediately and
+ * the next poll reconciles the authoritative list; failure restores the
+ * button and surfaces the error text inline.
+ */
+export declare function ArchiveDeleteButton({ team, t, onDeleted }: {
+    readonly team: ActivityTeam;
+    readonly t: AgentTeamsTranslate;
+    readonly onDeleted: (teamId: string) => void;
+}): import("react").JSX.Element;
 /** The top-right activity floater. Teams follow the current session: live
  * snapshots and historic card summaries are only shown while their captain
  * session is the one currently open. */

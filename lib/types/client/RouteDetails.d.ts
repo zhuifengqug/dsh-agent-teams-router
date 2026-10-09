@@ -46,8 +46,13 @@ export declare function TeamCostCell({ cost, t }: {
     readonly t: AgentTeamsTranslate;
 }): import("react").JSX.Element;
 /**
- * Member row routeKey chip (B member view): five segments in mono
- * `label-tertiary`, hidden entirely when the member has no frozen key parts.
+ * Member row routeKey chip (B member view): the slot-identity segments the
+ * member's own model badge does not already show, in mono `label-tertiary`.
+ *
+ * The member row already renders a compact model badge on the left, so the
+ * `model` segment is intentionally left out here (2026-10-09 user decision:
+ * one model label per row, not two). The full five-segment key stays in the
+ * `title` and on the data attributes.
  */
 export declare function MemberRouteKey({ member }: {
     readonly member: Parameters<typeof memberRouteKeyParts>[0];
