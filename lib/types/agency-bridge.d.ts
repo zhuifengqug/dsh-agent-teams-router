@@ -13,14 +13,18 @@
  *
  * ## 核实过的服务形状（`@michengai/dsh-agency-agents@1.0.11`，实读其构建产物）
  *
- * | 服务名 | 这里用到的方法 | 备注 |
+ * | 服务名 | 这里用到的方法（2026-10-09 活体核实） | 备注 |
  * | --- | --- | --- |
- * | `agencyAgentsTeams` | `list()`, `get(idOrName)` | team 成员是「角色 + 职责 + 指令」，**不是** persona 正文 |
- * | `agencyAgentsLibrary` | `catalog()` | 只查 expert 的 `division`，不预加载全量 persona 正文 |
- * | `agencyAgentsPersona` | `getPrompt(slug, division, locale)` | persona 正文按需读，且只读本团这几个成员 |
+ * | `agencyAgentsTeams` | `snapshot()`（异步 → `{teams,…}`）、`get(id)`（异步，未命中抛错）；**没有 `list()`** | team 成员是「角色 + 职责 + 指令」，**不是** persona 正文 |
+ * | `agencyAgentsLibrary` | `catalog()`（**异步** → `{experts,…}`） | 只查 expert 的 `division`，不预加载全量 persona 正文 |
+ * | `agencyAgentsPersona` | `getPrompt(slug, division, locale)`（异步 → `{prompt}`） | persona 正文按需读，且只读本团这几个成员 |
  *
  * 服务名/形状随版本演进由 {@link agencyServicesOf} 的最小方法集校验吸收：
  * 缺方法即视为缺席，整体回落。
+ *
+ * > 2026-10-09 活体走查修正：早先按「同步 `list()`/`catalog()`、persona 返回裸字符串」
+ * > 实现，与 1.0.11 真实形状不符——异步方法被当同步用、`list` 根本不存在、persona
+ * > 返回对象被读成 undefined。三处按真实形状收敛（见上表），并补真实形状回归测试。
  *
  * @module dsh-agent-teams/agency-bridge
  */
@@ -56,16 +60,20 @@ export interface AgencyExpert {
     slug?: string;
     division?: string;
 }
-/** `agencyAgentsTeams` 的最小可用方法集。 */
+/** `agencyAgentsTeams` 的最小可用方法集（真实形状：异步 `snapshot` + 异步 `get`）。 */
 export interface AgencyTeamsServiceLike {
+    /** 团队清单：真实服务返回 `{teams, …}`；旧形状可能直接返回数组。 */
+    snapshot?: () => unknown;
+    /** 兼容别名：某些版本以此列举（同步或异步皆可）。 */
     list?: () => unknown;
+    /** 按 id 取团队成员；真实服务未命中会抛错。 */
     get?: (idOrName: string) => unknown;
 }
-/** `agencyAgentsLibrary` 的最小可用方法集。 */
+/** `agencyAgentsLibrary` 的最小可用方法集（`catalog()` 真实为异步）。 */
 export interface AgencyLibraryServiceLike {
     catalog?: () => unknown;
 }
-/** `agencyAgentsPersona` 的最小可用方法集。 */
+/** `agencyAgentsPersona` 的最小可用方法集（真实返回 `{prompt}`，异步）。 */
 export interface AgencyPersonaServiceLike {
     getPrompt?: (slug: string, division: string, locale: string) => unknown;
 }
@@ -77,8 +85,10 @@ export interface AgencyServices {
 }
 export interface AgencyServicesAbsent {
     available: false;
-    /** 缺席的服务键；用于给用户一条可读的原因。 */
+    /** 服务键确实缺席（`ctx.get` 读不到或不是对象）。 */
     missing: string[];
+    /** 服务在场但方法集对不上（版本不认识）；与 `missing` 分开，提示语不再说谎。 */
+    unrecognized: string[];
 }
 export interface AgencyServicesPresent {
     available: true;
@@ -151,16 +161,19 @@ export type AgencyAssemblyResultOrError = {
 /**
  * 从 `agencyAgentsTeams` 取一个团队（按 id 或 name 匹配）。
  *
- * 优先 `get(idOrName)`；它不可用或不命中时用 `list()` 做一次 id/name 精确回落，
- * 仍不命中就报错并**列出可用 team id**（DESIGN A.3：不静默回落）。
+ * 真实形状（2026-10-09 活体核实）：`snapshot()` 是异步且返回 `{teams, …}`，
+ * `get(id)` 是异步、**未命中抛错**、只认 id。所以顺序是：
+ * ① `snapshot()` 拿全量清单，先按 id 再按 name 精确匹配（也给得到"可用 id"清单）；
+ * ② 清单不可用/不命中时退回 `get(idOrName)`（吞掉未命中异常）；
+ * ③ 仍不命中就报错并**列出可用 team id**（DESIGN A.3：不静默回落）。
  */
-export declare function resolveAgencyTeam(services: AgencyServices, idOrName: string): {
+export declare function resolveAgencyTeam(services: AgencyServices, idOrName: string): Promise<{
     ok: true;
     team: AgencyTeam;
 } | {
     ok: false;
     error: string;
-};
+}>;
 /**
  * 合成一个成员的 `executionPrompt`：persona 正文 + 「## 本次职责」+「## 补充指令」。
  *

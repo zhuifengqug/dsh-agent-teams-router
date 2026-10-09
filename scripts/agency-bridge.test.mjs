@@ -45,23 +45,28 @@ function ctxWith(services) {
   return { get: (key) => services[key] }
 }
 
-/** Build the three stub services from fixtures. */
+/** Build the three stub services from fixtures (真实形状：异步 snapshot/get/catalog、persona 返回 {prompt}). */
 function makeServices(options = {}) {
   const teams = options.teams ?? []
   const experts = options.experts ?? []
   const personas = options.personas ?? {}
   const missingMethods = options.missingMethods ?? []
-  const calls = { getPrompt: [], catalog: 0 }
+  const calls = { getPrompt: [], catalog: 0, snapshot: 0 }
   const teamsService = {
-    list: () => teams,
-    get: (idOrName) => teams.find((team) => team.id === idOrName) ?? teams.find((team) => team.name === idOrName),
+    snapshot: async () => { calls.snapshot += 1; return { teams, enabledTeams: teams.map((team) => team.id), revision: 1 } },
+    get: async (id) => {
+      const team = teams.find((candidate) => candidate.id === id)
+      if (team === undefined) throw new Error(`专家团不存在，请重新选择。`)
+      return team
+    },
   }
-  const libraryService = { catalog: () => { calls.catalog += 1; return experts } }
+  const libraryService = { catalog: async () => { calls.catalog += 1; return { experts, enabled: [], revision: 1 } } }
   const personaService = {
-    getPrompt: (slug, division, locale) => {
+    getPrompt: async (slug, division, locale) => {
       calls.getPrompt.push({ slug, division, locale })
       if (options.throwGetPrompt === true) throw new Error('persona boom')
-      return personas[slug]
+      const prompt = personas[slug]
+      return prompt === undefined ? undefined : { prompt }
     },
   }
   const built = {
@@ -70,7 +75,7 @@ function makeServices(options = {}) {
     [AGENCY_SERVICE_KEYS.persona]: personaService,
   }
   for (const key of missingMethods) {
-    if (key === AGENCY_SERVICE_KEYS.teams) delete built[AGENCY_SERVICE_KEYS.teams].get
+    if (key === AGENCY_SERVICE_KEYS.teams) delete built[AGENCY_SERVICE_KEYS.teams].snapshot
     else delete built[key].catalog ?? delete built[key].getPrompt
   }
   return { services: built, calls }
@@ -98,7 +103,7 @@ test('三服务任一缺失 → available:false 并列出缺席服务', () => {
   for (const name of SERVICE_NAMES) {
     const services = {}
     for (const other of SERVICE_NAMES) {
-      if (other !== name) services[other] = { list: () => [], get: () => undefined, catalog: () => [], getPrompt: () => '' }
+      if (other !== name) services[other] = { snapshot: async () => ({ teams: [] }), catalog: async () => ({ experts: [] }), getPrompt: async () => undefined }
     }
     const outcome = agencyServicesOf(ctxWith(services))
     assert.equal(outcome.available, false, `missing ${name} must be unavailable`)
@@ -112,16 +117,76 @@ test('三服务任一缺失 → available:false 并列出缺席服务', () => {
   assert.equal(agencyServicesOf(undefined).available, false)
 })
 
-test('服务在但最小方法集不全 → 同样整体回落（版本不认识即当缺席）', () => {
+test('服务在但最小方法集不全 → 整体回落，且与"缺席"分开报告', () => {
   const shapes = [
-    { teams: {}, library: {}, persona: {} },
-    { teams: { get: () => undefined }, library: { catalog: () => [] }, persona: { getPrompt: () => '' } },
+    // 三个服务都注册了，但都是空对象（没有任何可用方法）→ unrecognized。
+    {
+      [AGENCY_SERVICE_KEYS.teams]: {},
+      [AGENCY_SERVICE_KEYS.library]: {},
+      [AGENCY_SERVICE_KEYS.persona]: {},
+    },
+    // 只有一部分服务形状可用 → 缺失的进 unrecognized。
+    {
+      [AGENCY_SERVICE_KEYS.teams]: { snapshot: async () => ({ teams: [] }) },
+      [AGENCY_SERVICE_KEYS.library]: {},
+      [AGENCY_SERVICE_KEYS.persona]: { getPrompt: async () => undefined },
+    },
   ]
   for (const services of shapes) {
-    assert.equal(agencyServicesOf(ctxWith(services)).available, false, `shape ${JSON.stringify(Object.keys(services))} must fall back`)
+    const outcome = agencyServicesOf(ctxWith(services))
+    assert.equal(outcome.available, false, `shape ${JSON.stringify(Object.keys(services))} must fall back`)
+    assert.deepEqual(outcome.missing, [], 'present-but-wrong-shape is not a missing service')
+    assert.ok(outcome.unrecognized.length > 0, 'unrecognized shape is reported separately')
+    assert.match(agencyUnavailableReason(outcome), /unrecognized shape/)
   }
+  // A get-only teams service (no snapshot/list) is still a usable lookup.
+  const getOnly = {
+    [AGENCY_SERVICE_KEYS.teams]: { get: async () => DEMO_TEAM },
+    [AGENCY_SERVICE_KEYS.library]: { catalog: async () => ({ experts: [] }) },
+    [AGENCY_SERVICE_KEYS.persona]: { getPrompt: async () => undefined },
+  }
+  assert.equal(agencyServicesOf(ctxWith(getOnly)).available, true)
   const full = makeServices({ teams: [DEMO_TEAM], experts: DEMO_EXPERTS, personas: {} })
   assert.equal(agencyServicesOf(ctxWith(full.services)).available, true)
+})
+
+test('回归：agency-agents 1.0.11 的真实形状（异步 snapshot/get/catalog、persona 返回 {prompt}）', async () => {
+  // 这正是活体走查暴露的缺陷形状：没有 list()、catalog 是异步、persona 是对象。
+  // 老实现按「同步 list/catalog + 裸字符串 persona」写，单测全绿但活体整体回落。
+  const { services, calls } = makeServices({
+    teams: [DEMO_TEAM, { id: 'team-custom-2', name: '软件开发团' }],
+    experts: DEMO_EXPERTS,
+    personas: { 'growth-hacker': 'You are a growth hacker.', 'data-analyst': 'You read funnels.' },
+  })
+  const handle = agencyServicesOf(ctxWith(services))
+  assert.equal(handle.available, true, 'real 1.0.11 shape must be recognized')
+
+  // 按 id、按 name 都能取到（name 匹配走 snapshot 的全量清单）。
+  const byId = await resolveAgencyTeam(handle.services, 'growth-squad')
+  assert.equal(byId.ok, true)
+  const byName = await resolveAgencyTeam(handle.services, '软件开发团')
+  assert.equal(byName.ok, true)
+  assert.equal(byName.ok ? byName.team.id : '', 'team-custom-2')
+
+  // 未知 id：get() 抛错被吞掉，报错里带可用清单（不静默回落）。
+  const missingTeam = await resolveAgencyTeam(handle.services, 'nope')
+  assert.equal(missingTeam.ok, false)
+  assert.match(missingTeam.reason ?? missingTeam.error, /available teams: growth-squad/)
+  assert.match(missingTeam.ok === false ? missingTeam.error : '', /team-custom-2/)
+
+  // 装配：persona 从 {prompt} 取正文、division 来自异步 catalog。
+  const assembled = await assembleAgencyTeam({
+    services: handle.services,
+    team: DEMO_TEAM,
+    maxMembers: 8,
+    locale: 'zh',
+  })
+  assert.equal(assembled.ok, true)
+  const members = assembled.ok ? assembled.result.members : []
+  assert.equal(members.length, 2)
+  assert.match(members[0].executionPrompt, /You are a growth hacker\./)
+  assert.deepEqual(calls.getPrompt.map((call) => call.division), ['marketing', 'data'])
+  assert.equal(calls.catalog, 1, 'catalog is awaited once')
 })
 
 test('loadAgencyTeam 服务缺席时给出可读原因且不抛错', async () => {
@@ -168,14 +233,14 @@ test('inject 数组与源码均不声明任何 agency 服务', async () => {
   assert.equal(/ctx\.inject\(\[[^\]]*commands[^\]]*agency/i.test(index), false)
 })
 
-test('按 id 或 name 都能取到团队', () => {
+test('按 id 或 name 都能取到团队', async () => {
   const { services } = makeServices({ teams: [DEMO_TEAM], experts: DEMO_EXPERTS })
   const handle = agencyServicesOf(ctxWith(services))
   assert.equal(handle.available, true)
   const handleServices = handle.available ? handle.services : undefined
-  assert.equal(resolveAgencyTeam(handleServices, 'growth-squad').ok, true)
-  assert.equal(resolveAgencyTeam(handleServices, 'Growth Squad').ok, true)
-  assert.equal(resolveAgencyTeam(handleServices, '').ok, false)
+  assert.equal((await resolveAgencyTeam(handleServices, 'growth-squad')).ok, true)
+  assert.equal((await resolveAgencyTeam(handleServices, 'Growth Squad')).ok, true)
+  assert.equal((await resolveAgencyTeam(handleServices, '')).ok, false)
 })
 
 test('team 不存在 → 报错并列出可用 id（不静默回落）', async () => {

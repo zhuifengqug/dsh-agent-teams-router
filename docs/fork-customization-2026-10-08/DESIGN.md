@@ -49,6 +49,24 @@
 
 **结论：agency-agents 的 team 成员是"角色 + 职责 + 指令"，不是完整 persona 正文；persona 正文要按需用 `getPrompt(slug, division)` 拉。** 这正好对上 AgentTeams 的 `executionPrompt`。
 
+### A.1b 活体核实的真实形状（2026-10-09 修正）
+
+> **背景**：t2 按 A.1 的表格实现（同步 `list()`/`get()`、同步 `catalog()`、persona 返回裸字符串），
+> 单测全绿但**活体整体回落**。2026-10-09 活环境走查抓到根因——三个服务的真实形状与表格不符：
+
+| 服务 | A.1 表格写的（错） | 真实形状（实读 1.0.11 构建产物 + 活体验证） |
+| --- | --- | --- |
+| `agencyAgentsTeams` | `list()`, `get(idOrName)` 同步 | **`snapshot()`**（异步 → `{teams, enabledTeams, revision}`）、`get(id)`（**异步**，未命中**抛错**，只认 id）；**没有 `list()`** |
+| `agencyAgentsLibrary` | `catalog()` 同步 | **`async catalog()`** → `{experts, enabled, revision}` |
+| `agencyAgentsPersona` | `getPrompt(...)` → 字符串 | **异步** → **`{prompt: string}`** 对象（兼容裸字符串） |
+
+修正：`agency-bridge.ts` 三处按真实形状收敛（`await` 化、`snapshot()` 优先 `get()` 兜底、`{prompt}` 解包），
+`agencyServicesOf` 把「服务未注册」与「形状不认识」**分开报告**（原提示语把两者混为一谈，误导排障）；
+新增「真实形状回归测试」，用 1.0.11 的实际形状做 stub——**旧实现会在这个测试上失败**。
+
+**教训**：跨插件服务桥接，**接口形状必须活体验证**，不能只照文档/类型声明实现；
+stub 测试要与被桥接方的真实形状一致，否则单测全绿会掩盖活体回落到零。
+
 ### A.2 设计
 
 **注入方式**：可选桥接（与 `dsh-value-router` 既有模式一致）。
