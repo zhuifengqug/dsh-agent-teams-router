@@ -118,6 +118,7 @@ export declare const zh: {
     'member.routeKey': string;
     'cost.summaryLabel': string;
     'cost.membersDetail': string;
+    'cost.detailTrigger': string;
     'cost.popoverTitle': string;
     'cost.popoverAria': string;
     'cost.bucket.inputTokens': string;
@@ -374,6 +375,7 @@ export declare const en: {
     'member.routeKey': string;
     'cost.summaryLabel': string;
     'cost.membersDetail': string;
+    'cost.detailTrigger': string;
     'cost.popoverTitle': string;
     'cost.popoverAria': string;
     'cost.bucket.inputTokens': string;

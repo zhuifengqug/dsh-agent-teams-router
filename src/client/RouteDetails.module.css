@@ -44,6 +44,14 @@
   }
 }
 
+/* Right-anchored variant: the cost cell sits at the panel's right edge, so a
+   left-anchored card grows past the viewport and gets clipped. Anchoring the
+   card to the anchor's right edge keeps it inside the panel. */
+.popoverCardRight {
+  left: auto;
+  right: 0;
+}
+
 .popoverHeading {
   padding: 6px 7px 2px;
   color: var(--dsw-alias-label-tertiary);

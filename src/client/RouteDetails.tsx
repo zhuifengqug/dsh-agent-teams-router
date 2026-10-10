@@ -201,14 +201,18 @@ export function CostPopover({ cost, t, popoverKey }: {
       <span
         className={css.auditTrigger}
         role="img"
-        aria-label={t('cost.popoverAria')}
-        title={t('cost.popoverAria')}
+        aria-label={t('cost.membersDetail', { count: members.length })}
+        title={t('cost.membersDetail', { count: members.length })}
         data-cost-trigger
       >
-        {t('cost.membersDetail', { count: members.length })}
+        {/* The member count already appears in the team header stats; this
+            trigger names the affordance instead of repeating the number
+            (2026-10-10 user: 别重复人数). The count stays in the aria-label
+            and title for screen readers and hover. */}
+        {t('cost.detailTrigger')}
       </span>
       {open && (
-        <span className={css.popoverCard} data-popover="team-cost" data-cost-popover role="group" aria-label={t('cost.popoverAria')}>
+        <span className={`${css.popoverCard} ${css.popoverCardRight}`} data-popover="team-cost" data-cost-popover role="group" aria-label={t('cost.popoverAria')}>
           <span className={css.popoverHeading}>{t('cost.popoverTitle')}</span>
           <span className={css.popoverList}>
             {members.map((member) => (
