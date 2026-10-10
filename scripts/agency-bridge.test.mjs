@@ -480,3 +480,25 @@ test('服务全缺时既有工具与 usage 段无回归', () => {
   assert.ok(text.includes(`Tools: ${TEAM_TOOL_NAMES.join(', ')}`))
   assert.equal(text.includes('agencyTeam'), false, 'usage text stays unaware of the optional bridge')
 })
+
+test('回归：分派路径一律在创建时冻结成员线路（agency 与 profile 同契约）', async () => {
+  // 2026-10-09 观察项：initializeAgencyTeam 的选路循环在 `if (!input.staged)`
+  // 守卫之外。核对 initializeProfileTeam 后确认这是**刻意**的——两条路径必须
+  // 写出同一形状的成员记录，且「成员线路创建时冻结」是既定硬约束；暂存团队在
+  // 批准时由 approveStagedTeam 按任务难度重锚。这条断言钉住该语义，防止有人
+  // 把循环挪进守卫（那会让暂存成员没有线路，两条路径形状分叉）。
+  const source = await readFile(fileURLToPath(new URL('../src/tools.ts', import.meta.url)), 'utf8')
+  for (const [label, fn] of [['initializeAgencyTeam', /async function initializeAgencyTeam/], ['initializeProfileTeam', /async function initializeProfileTeam/]]) {
+    const start = source.search(fn)
+    assert.ok(start > 0, `${label} must exist`)
+    const body = source.slice(start, source.indexOf('\n}\n', start))
+    // 守卫内的解析 + 守卫外的冻结循环，两者都在同一函数体内。
+    assert.match(body, /if \(!input\.staged\) \{/, `${label}: staged guard present`)
+    assert.match(body, /member\.routeKey = memberReuseKey\(/, `${label}: routeKey is frozen on creation`)
+    assert.match(body, /member\.provider = selection\.provider/, `${label}: provider is frozen on creation`)
+    // 守卫只包住解析/编成，不能包住冻结循环。
+    const guardEnd = body.indexOf('}', body.indexOf('applyMemberRoutePins(draft)'))
+    const freezeAt = body.indexOf('member.routeKey = memberReuseKey(')
+    assert.ok(freezeAt > guardEnd, `${label}: the freeze loop must stay outside the staged guard`)
+  }
+})

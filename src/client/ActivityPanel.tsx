@@ -775,8 +775,10 @@ export function TeamSection({ team, modelDirectory, onContinuePlanning, onDiscar
               : t('members.expand')
           return (
             <>
-              <button type="button" className={css.membersToggle} onClick={() => { setMembersOpen((current) => !current) }} aria-expanded={membersOpen} data-members-toggle>
-                <span><Chevron open={membersOpen} />{t('members.toggle', { count: team.members.length })}</span>
+              <button type="button" className={css.membersToggle} onClick={() => { setMembersOpen((current) => !current) }} aria-expanded={membersOpen} data-members-toggle aria-label={t('members.toggle', { count: team.members.length })}>
+                {/* The member count already sits in the header stats; the toggle
+                    keeps only the disclosure affordance (2026-10-09 user). */}
+                <span><Chevron open={membersOpen} />{t('members.section')}</span>
                 <span>{expandLabel}</span>
               </button>
 

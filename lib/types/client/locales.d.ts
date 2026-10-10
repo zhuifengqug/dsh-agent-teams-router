@@ -238,6 +238,7 @@ export declare const zh: {
     'captain.state.discarded': string;
     'captain.state.settled': string;
     'members.toggle': string;
+    'members.section': string;
     'members.collapse': string;
     'members.expand': string;
     'members.expandFinished': string;
@@ -493,6 +494,7 @@ export declare const en: {
     'captain.state.discarded': string;
     'captain.state.settled': string;
     'members.toggle': string;
+    'members.section': string;
     'members.collapse': string;
     'members.expand': string;
     'members.expandFinished': string;
