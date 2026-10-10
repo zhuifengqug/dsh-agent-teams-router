@@ -16,37 +16,6 @@ export interface ActivityMember {
     readonly currentTask: string;
     readonly unread: number;
 }
-/**
- * One measured cost figure plus the source that produced it (mirrors the host
- * `TeamCostMetric` closed set). Missing buckets are missing data, never zero.
- */
-export interface ActivityCostMetric {
-    readonly value: number;
-    readonly source: string;
-}
-/** One cost bucket row (mirrors the host `TeamCostBuckets`). */
-export interface ActivityCostBuckets {
-    readonly inputTokens?: ActivityCostMetric;
-    readonly outputTokens?: ActivityCostMetric;
-    readonly cacheReadTokens?: ActivityCostMetric;
-    readonly cacheWriteTokens?: ActivityCostMetric;
-    readonly costEstimate?: ActivityCostMetric;
-}
-/** One member cost row (mirrors the host `TeamMemberCost`). */
-export interface ActivityMemberCost {
-    readonly memberId: string;
-    readonly memberName: string;
-    readonly reading?: ActivityCostBuckets;
-    readonly attributedSubsessions?: number;
-}
-/** Team-level cost summary (mirrors the host `TeamCostSummary`). */
-export interface ActivityCostSummary {
-    readonly status: 'ok' | 'no-data';
-    readonly source?: string;
-    readonly reason?: string;
-    readonly totals?: ActivityCostBuckets;
-    readonly members?: readonly ActivityMemberCost[];
-}
 /** One bounded route-audit step (mirrors the host `TeamRouteAuditStep`). */
 export interface ActivityRouteAuditStep {
     readonly at: number;
@@ -123,12 +92,6 @@ export interface ActivityTeam {
     readonly halted?: boolean;
     readonly members: readonly ActivityMember[];
     readonly tasks: readonly ActivityTask[];
-    /**
-     * Team-level cost summary (DESIGN C.1). Present with `status: 'no-data'` and
-     * no numbers when no usage source could be read — missing data is never a
-     * fabricated zero.
-     */
-    readonly cost?: ActivityCostSummary;
     readonly messageCount: number;
     readonly captainInbox: readonly ActivityMessage[];
 }

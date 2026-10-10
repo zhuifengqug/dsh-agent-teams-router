@@ -8,7 +8,7 @@
  * @module dsh-agent-teams/snapshot
  */
 import type { Context } from '@deepseek-ai/cordis';
-import type { MemberStatus, TeamCostSummary, TeamRouteAuditProjection, TeamState } from './types.ts';
+import type { MemberStatus, TeamRouteAuditProjection, TeamState } from './types.ts';
 /** Visual task state for the activity panel. */
 export type VisualTaskState = 'blocked' | 'open' | 'running' | 'completed' | 'failed' | 'cancelled';
 /** One member row of the activity snapshot. */
@@ -89,13 +89,6 @@ export interface TeamActivitySnapshot {
     readonly halted?: boolean;
     readonly members: readonly TeamActivityMember[];
     readonly tasks: readonly TeamActivityTask[];
-    /**
-     * Team-level cost summary (DESIGN C.1 data layer; the panel renders the
-     * headline and the per-member popover in step 7). Present with
-     * `status: 'no-data'` and no numbers when no source could be read —
-     * missing data is never a fabricated zero.
-     */
-    readonly cost?: TeamCostSummary;
     readonly messageCount: number;
     readonly captainInbox: readonly TeamActivityMessage[];
 }

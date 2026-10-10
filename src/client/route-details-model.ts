@@ -1,5 +1,5 @@
 /**
- * Pure route/cost presentation helpers (DESIGN D, step 7).
+ * Pure route presentation helpers (DESIGN D, step 7).
  *
  * Kept CSS-free and React-free so offline tests can import the tsc output
  * directly (`lib/client/route-details-model.js`), mirroring the
@@ -12,8 +12,6 @@
 export const POPOVER_OPEN_DELAY_MS = 100
 /** Close grace after the pointer leaves (DESIGN D.3; copied, not tuned). */
 export const POPOVER_CLOSE_DELAY_MS = 100
-/** Skeleton shows this long before giving up and rendering an em dash (D.5). */
-export const COST_SKELETON_GIVEUP_MS = 2000
 
 /** Mono `provider/model@effort` line; empty parts collapse away. */
 export function routeLine(provider: string, model: string, effort: string): string {
@@ -22,25 +20,6 @@ export function routeLine(provider: string, model: string, effort: string): stri
   const base = left !== '' && right !== '' ? `${left}/${right}` : right !== '' ? right : left
   const e = effort.trim()
   return base === '' ? (e === '' ? '' : `@${e}`) : e === '' ? base : `${base}@${e}`
-}
-
-/**
- * Token-count formatting copied from the host chat `formatExactTokens` rule
- * (DESIGN D.5: labels and number formats mirror the host character for
- * character). The group separator is the host's literal `,` for both locales.
- */
-export function formatTokensGrouped(value: number): string {
-  const negative = value < 0
-  const digits = String(Math.abs(Math.round(value)))
-  const groups: string[] = []
-  for (let end = digits.length; end > 0; end -= 3) groups.unshift(digits.slice(Math.max(0, end - 3), end))
-  return `${negative ? '-' : ''}${groups.join(',')}`
-}
-
-/** One decimal, trailing `.0` trimmed (cost buckets are fractional). */
-export function formatCostEstimate(value: number): string {
-  const rounded = Math.round(value * 10) / 10
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
 }
 
 /**

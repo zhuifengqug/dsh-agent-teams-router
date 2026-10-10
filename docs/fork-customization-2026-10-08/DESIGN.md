@@ -11,7 +11,7 @@
 | --- | --- |
 | A | 接入 `@michengai/dsh-agency-agents`，**用已有的专家团当成员阵容**，不再重复写 `profiles` |
 | B | 把已落盘的 `routeAudit[]` 显示到 ActivityPanel：看得见"为什么这个成员用了这个模型" |
-| C | ① 团队级成本汇总 ② 显式难度评分卡（**留空派发能成立的前提**） |
+| C | ① ~~团队级成本汇总~~（**2026-10-10 已下线，整块删除**） ② 显式难度评分卡（**留空派发能成立的前提**） |
 | D | UI 改动（设计语言参照 `dsh-claude-style`，规格已定稿见 D 段；B/C 展示并入步 7 一次落地） |
 
 **硬约束（用户既定）**
@@ -166,18 +166,27 @@ export function agencyServicesOf(ctx: { get(key: never): unknown }) {
 
 ---
 
-## C · 成本汇总 + 难度评分卡
+## C · ~~成本汇总 +~~ 难度评分卡
 
-### C.1 团队级成本汇总
-**问题**：每个成员是**独立会话**（`startContinuable` 创建），`dsh-cost-meter` 按会话算，面板上看不到"这个团一共花了多少、谁最贵"。
+> 2026-10-10：C.1 成本汇总整块下线（详见下文 C.1 的裁决块）；本节现只含 C.2 难度评分卡。
 
-**设计（2026-10-08 评审裁决：数据层与展示层分离，展示并入步 7）**：
+### C.1 团队级成本汇总 —— **已于 2026-10-10 下线（整块删除）**
+
+> **裁决（2026-10-10，用户实测后）**：成本功能「没必要用」，**成本单元格 + 费用明细 popover + 数据层一并删除**，不做隐藏、不做开关。
+> 删除面：`src/cost.ts`（整个宿主数据层，含 cost-meter 服务与 sessionProjections seam 探测）、`src/types.ts` 的成本类型块、`src/snapshot.ts` 的成本装配与 `TeamActivitySnapshot.cost` 投影、客户端镜像类型（`activity-monitor.ts`）、`CostPopover`/`TeamCostCell`/`costMetricText`（`RouteDetails.tsx`）、成本 CSS 与 `cost.*` 双语文案、`scripts/cost-aggregation.test.mjs` 与 `route-details.test.mjs` 中的成本断言。
+> 连带作废：2026-10-10 早些时候为「费用明细」触发器新增的 `cost.detailTrigger` 文案、以及为成本 popover 新增的 `.popoverCardRight` 右对齐样式。
+> **动机补记**：删除而非隐藏的原因之一是数据层每次快照轮询都会真实探测宿主 usage 来源（`costMeter` 服务 / 投影 seam）并聚合全体成员——不展示却仍轮询等于白跑。
+> 以下为原始设计，仅作历史留存，**不再实现**。
+
+**原问题**：每个成员是**独立会话**（`startContinuable` 创建），`dsh-cost-meter` 按会话算，面板上看不到"这个团一共花了多少、谁最贵"。
+
+**原设计（2026-10-08 评审裁决：数据层与展示层分离，展示并入步 7）**：
 - 优先复用宿主已有的 usage/成本来源（不自己重算 token）——先以 `ctx.get()` 探测 `dsh-cost-meter` 是否 `provide` 了可注入服务（**不用 try/catch 当探测器**）；有则用，无则从成员会话 usage 投影读取（成员是 `startContinuable` 独立会话，按 member.id/session 聚合）。
 - 汇总粒度：团队合计 + 成员分列（输入/输出/缓存命中/估算费用），**每个数字标注来源**。
 - **展示位置（与 D.5 对齐，取代早先"花名册列分列"的表述）**：面板标题区一行团队合计，成员分列明细收进 popover；花名册行不放成本数字。
 - 数据层只负责字段与 no-data 状态；UI 全部在步 7 按 D 段实现。
 
-**风险**：跨版本 usage 字段不稳定 → 用"能读到就显示、读不到就显示 —"的降级策略，绝不编造数字。
+**原风险**：跨版本 usage 字段不稳定 → 用"能读到就显示、读不到就显示 —"的降级策略，绝不编造数字。
 
 ### C.2 显式难度评分卡（**关键**）
 **问题（已核实）**：`agent_teams_create_task` 有 `difficulty` 参数，但 `usageSectionText()`（`src/index.ts` L139-150，10 条协议）**一次都没提 `difficulty` 是什么、什么算 high**。四档派发的输入端因此全凭队长感觉。
@@ -263,7 +272,9 @@ export function agencyServicesOf(ctx: { get(key: never): unknown }) {
 - **成员行**：显示 `routeKey` 拆解（difficulty / role / provider / effort），mono，`label-tertiary`。**`model` 段不重复显示**——同一行左侧已有宿主原生的模型徽章（`css.memberModel`），两处都写模型是冗余（2026-10-09 用户实测后裁决：一行只留一个模型标签）；完整五段键仍保留在 `title` 与 `data-route-key`/`data-route-key-model` 上，DOM 探针与无障碍名称不受影响。
 - popover 内**只读**，不提供写操作。
 
-### D.5 C.1 落地
+### D.5 C.1 落地 —— **随 C.1 于 2026-10-10 作废**
+
+> C.1 整块删除后，本节四条数字纪律**在本插件内不再有落点**（面板已无成本数字、无成本 popover、无骨架占位）。保留原文仅作历史记录；若未来重新引入任何数字面板，仍以此为准则。
 
 直接采用它的数字纪律（ADR D27）：
 
@@ -328,8 +339,8 @@ export function agencyServicesOf(ctx: { get(key: never): unknown }) {
 | 3 | **C.2 难度评分卡**（A 的前置） | — | `usageSectionText` 单测 |
 | 4 | **A** agency-agents 桥接（含回落） | 3 | 桥接单测 + 服务缺失回归 |
 | 5 | **B** 数据层：routeAudit 投影进快照（截 12 条 + degraded/fallback/effort 字段） | 4 | 截断/字段/回归单测 |
-| 6 | **C.1** 数据层：成本聚合（no-data≠0，来源标注） | 5 | 形状与 no-data 单测 |
-| 7 | **D** UI：B/C 展示层一次性落地（含 B.3 三场景与 C.1 读数显示） | 6 | 双主题浏览器验收（captain 侧） |
+| 6 | ~~**C.1** 数据层：成本聚合（no-data≠0，来源标注）~~ **2026-10-10 已下线并删除** | — | — |
+| 7 | **D** UI：B（及当时的 C.1）展示层一次性落地（B.3 三场景；C.1 读数显示部分随 C.1 作废） | 5 | 双主题浏览器验收（captain 侧） |
 | 7.5 | **E** 归档团队删除（认证路由+所有权绑定+两击确认 UI） | 7 | `archive-delete.test.mjs` + `verify:web-routes` |
 | 8 | 填充 `max` 档配置（profile 侧，非本仓库） | — | 面板确认 |
 
@@ -343,7 +354,7 @@ export function agencyServicesOf(ctx: { get(key: never): unknown }) {
 | --- | --- | --- |
 | agency-agents 服务名/形状随版本变 | A 失效 | 只依赖服务名 + 最小方法集；缺方法即回落；把核实过的版本写进注释 |
 | 上游 `usageSectionText` 改动导致冲突 | C.2 rebase 冲突 | 评分卡尽量独立成一段追加，不改动原 10 条 |
-| 成本字段跨宿主版本不稳 | C.1 显示错误数字 | 读不到就显示 `—`，不估算 |
+| ~~成本字段跨宿主版本不稳~~ | ~~C.1 显示错误数字~~ **C.1 已下线，本条作废** | — |
 | 与上游分叉加深 | 每次上游发版 rebase 变痛 | 新功能独立成文件（如 `agency-bridge.ts`），少改上游既有文件 |
 | `max` 档为空 | 留空派发后 max 任务降到 high | 步 8 填档（profile 侧） |
 
@@ -351,7 +362,7 @@ export function agencyServicesOf(ctx: { get(key: never): unknown }) {
 
 ## 评审裁决记录（2026-10-08，用户已确认）
 
-1. **成本数字位置**：标题区团队合计 + popover 成员分列（守 D.5「数字只有一个去处」；C.1 早先"花名册列分列"表述作废）。
+1. ~~**成本数字位置**：标题区团队合计 + popover 成员分列（守 D.5「数字只有一个去处」；C.1 早先"花名册列分列"表述作废）。~~ **2026-10-10 修订：C.1 整块下线，本条随之作废。**
 2. **步骤切分**：步 5/6 只做数据层，步 7 一次性做全部 UI——消除"先做临版 UI、步 7 再按 D 规格重写"的返工。
 3. **agency 主理人字段**：`agent_teams_create` 响应回显 coordinatorPrompt/constraints/deliveryRequirements 供队长采纳；goal 并入团队 description。
 4. **D 段自洽**：悬停改用 `interactive-bg-hover` token；阴影字面值按 elevation 豁免并在验收注明；删「暗色基准/`:not()`」纪律，默认单份 token、仅 `color-mix()` 派生写主题分支。

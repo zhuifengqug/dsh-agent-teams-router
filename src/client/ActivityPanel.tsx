@@ -66,10 +66,8 @@ import { StagingPlanEditor } from './StagingPlanEditor.tsx'
 import type { AgentTeamsCardData } from './agent-teams-card-definition.ts'
 import type { AgentTeamsLocaleKey, AgentTeamsTranslate } from './locales.ts'
 import {
-  CostPopover,
   MemberRouteKey,
   RouteAuditPopover,
-  TeamCostCell,
   difficultyBadge,
 } from './RouteDetails.tsx'
 import { routeLine } from './route-details-model.ts'
@@ -688,12 +686,6 @@ export function TeamSection({ team, modelDirectory, onContinuePlanning, onDiscar
             <span data-stat="tasks">{t('team.stats.completed', { completed: completedCount, total: team.tasks.length })}</span>
             <span data-stat="messages">{t('team.stats.messages', { count: team.messageCount })}</span>
           </span>
-          {/* C.1/D.5: the one team-total cost number lives in the header; the
-              per-member breakdown opens in the shared popover. */}
-          <TeamCostCell cost={team.cost} t={t} />
-          {team.cost !== undefined && (
-            <CostPopover cost={team.cost} t={t} popoverKey={`${team.teamId}:cost`} />
-          )}
           {canStop && (
             <button
               type="button"

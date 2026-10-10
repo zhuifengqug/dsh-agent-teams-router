@@ -1,4 +1,4 @@
-/* Route & cost presentation layer (DESIGN D, step 7).
+/* Route presentation layer (DESIGN D, step 7).
  *
  * Every color comes from a host --dsw-alias-* token; the only literal color in
  * this file is the popover drop shadow, which DESIGN D.3 grants as an
@@ -44,14 +44,6 @@
   }
 }
 
-/* Right-anchored variant: the cost cell sits at the panel's right edge, so a
-   left-anchored card grows past the viewport and gets clipped. Anchoring the
-   card to the anchor's right edge keeps it inside the panel. */
-.popoverCardRight {
-  left: auto;
-  right: 0;
-}
-
 .popoverHeading {
   padding: 6px 7px 2px;
   color: var(--dsw-alias-label-tertiary);
@@ -70,8 +62,7 @@
 }
 
 /* D.3 row: 32px floor, 2px 7px padding, 6px radius; hover token, no rgba. */
-.auditRow,
-.costRow {
+.auditRow {
   display: flex;
   min-height: 32px;
   align-items: flex-start;
@@ -81,8 +72,7 @@
   box-sizing: border-box;
 }
 
-.auditRow:hover,
-.costRow:hover {
+.auditRow:hover {
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
@@ -246,108 +236,6 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-/* ── C.1: team cost cell + member rows (D.5) ───────────────────────────── */
-
-.costCell {
-  display: inline-flex;
-  flex: none;
-  align-items: baseline;
-  gap: 4px;
-  font-variant-numeric: tabular-nums;
-}
-
-.costCellLabel {
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 9.5px;
-  line-height: 16px;
-}
-
-.costCellValue {
-  color: var(--dsw-alias-label-secondary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9.5px;
-  font-weight: 600;
-  line-height: 16px;
-}
-
-/* D.5 skeleton: the real row height (16px label line + 1px + 20px figure
- * line = 37px) with a 1.6s pulse; it never shows a number. */
-.costCellSkeleton {
-  display: inline-block;
-  width: 64px;
-  height: 37px;
-  flex: none;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--dsw-alias-label-tertiary) 22%, transparent);
-  animation: costSkeletonPulse 1.6s ease-in-out infinite;
-}
-
-@keyframes costSkeletonPulse {
-  0%, 100% { opacity: 0.45; }
-  50% { opacity: 1; }
-}
-
-.costCellNoData {
-  flex: none;
-  color: var(--dsw-alias-label-tertiary);
-  font-variant-numeric: tabular-nums;
-}
-
-.costRow {
-  align-items: baseline;
-}
-
-.costRowName {
-  flex: none;
-  min-width: 68px;
-  max-width: 120px;
-  overflow: hidden;
-  color: var(--dsw-alias-label-primary);
-  font-size: 10.5px;
-  font-weight: 600;
-  line-height: 16px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.costRowBuckets {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  flex-wrap: wrap;
-  gap: 2px 8px;
-}
-
-.costBucket {
-  display: inline-flex;
-  min-width: 0;
-  align-items: baseline;
-  gap: 3px;
-  font-variant-numeric: tabular-nums;
-}
-
-.costBucketLabel {
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 8.5px;
-  line-height: 14px;
-}
-
-.costBucketValue {
-  color: var(--dsw-alias-label-secondary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9px;
-  line-height: 14px;
-}
-
-.costRowSource {
-  flex: none;
-  align-self: flex-start;
-  padding-top: 2px;
-  color: var(--dsw-alias-label-caption);
-  font-size: 8px;
-  line-height: 12px;
-}
-
 /* ── B member view: routeKey five-segment chip ─────────────────────────── */
 
 .routeKeyChip {
@@ -376,8 +264,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .popoverCard,
-  .costCellSkeleton {
+  .popoverCard {
     animation: none;
   }
 }

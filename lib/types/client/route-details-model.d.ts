@@ -1,5 +1,5 @@
 /**
- * Pure route/cost presentation helpers (DESIGN D, step 7).
+ * Pure route presentation helpers (DESIGN D, step 7).
  *
  * Kept CSS-free and React-free so offline tests can import the tsc output
  * directly (`lib/client/route-details-model.js`), mirroring the
@@ -11,18 +11,8 @@
 export declare const POPOVER_OPEN_DELAY_MS = 100;
 /** Close grace after the pointer leaves (DESIGN D.3; copied, not tuned). */
 export declare const POPOVER_CLOSE_DELAY_MS = 100;
-/** Skeleton shows this long before giving up and rendering an em dash (D.5). */
-export declare const COST_SKELETON_GIVEUP_MS = 2000;
 /** Mono `provider/model@effort` line; empty parts collapse away. */
 export declare function routeLine(provider: string, model: string, effort: string): string;
-/**
- * Token-count formatting copied from the host chat `formatExactTokens` rule
- * (DESIGN D.5: labels and number formats mirror the host character for
- * character). The group separator is the host's literal `,` for both locales.
- */
-export declare function formatTokensGrouped(value: number): string;
-/** One decimal, trailing `.0` trimmed (cost buckets are fractional). */
-export declare function formatCostEstimate(value: number): string;
 /**
  * Member-row routeKey decomposition (B member view).
  *
