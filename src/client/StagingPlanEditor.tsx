@@ -28,7 +28,7 @@ type PlanModelSelection = {
 
 type EditorPendingChange = (key: string, pending: boolean) => void
 
-/** Difficulty tiers a task-level routing intent may carry (host-validated). */
+/** Difficulty tiers a task's presentation row may carry (host-validated). */
 const TASK_DIFFICULTY_TIERS = ['low', 'medium', 'high', 'max'] as const
 
 /** Locale keys naming those tiers, shared by the selector and the badges. */
@@ -505,17 +505,21 @@ function StagedMemberEditor({ team, member, modelDirectory, onPendingChange, t }
   )
 }
 
-function StagedTaskEditor({ team, task, modelDirectory, onPendingChange, t }: {
+/**
+ * Task difficulty/role as edited in the staged plan.
+ *
+ * 2026-10-10 去路由：任务不再有模型选择器——`provider`/`model`/`reasoning_effort`
+ * 只属于成员（见 `StagedMemberEditor`）。难度是纯展示属性。
+ */
+function StagedTaskEditor({ team, task, onPendingChange, t }: {
   readonly team: ActivityTeam
   readonly task: ActivityTask
-  readonly modelDirectory: ModelDirectory
   readonly onPendingChange: EditorPendingChange
   readonly t: AgentTeamsTranslate
 }) {
   const bodyId = useId()
   const taskDependencies = task.dependencies.join(', ')
-  const routing = task
-  const storedDifficulty = routing.difficulty ?? 'medium'
+  const storedDifficulty = task.difficulty ?? 'medium'
   const [open, setOpen] = useState(false)
   const [subject, setSubject] = useState(task.subject)
   const [description, setDescription] = useState(task.description ?? '')
@@ -523,11 +527,6 @@ function StagedTaskEditor({ team, task, modelDirectory, onPendingChange, t }: {
   const [dependencies, setDependencies] = useState(taskDependencies)
   const [difficulty, setDifficulty] = useState(storedDifficulty)
   const [role, setRole] = useState('')
-  const [provider, setProvider] = useState('')
-  const [model, setModel] = useState('')
-  const [reasoningEffort, setReasoningEffort] = useState('')
-  /** A stored `user` route is invisible in the snapshot; its source is the tell. */
-  const explicitRoute = routing.routeSource === 'user' || provider.trim() !== '' || model.trim() !== ''
   const remoteSignature = JSON.stringify([task.subject, task.description ?? '', task.assignee, taskDependencies, storedDifficulty])
   const [savedSignature, setSavedSignature] = useState(remoteSignature)
   const [busy, setBusy] = useState(false)
@@ -557,13 +556,11 @@ function StagedTaskEditor({ team, task, modelDirectory, onPendingChange, t }: {
   }
   /**
    * Persist this task row. The host requires `subject` and `dependencies`, so
-   * both are always sent with their current values. `route` is spread last and
-   * stays empty for plain text edits: omitting every route key is what keeps an
-   * already stored explicit route alive, whereas sending both empty strings
-   * clears it. A blank role is omitted for the same reason (the snapshot does
-   * not expose the stored role, so a blank field must not overwrite it).
+   * both are always sent with their current values. A blank role is omitted
+   * because the snapshot does not expose the stored role, so a blank field must
+   * not overwrite it.
    */
-  const persist = async (route: Record<string, unknown> = {}): Promise<void> => {
+  const persist = async (): Promise<void> => {
     setBusy(true)
     setFeedback(undefined)
     try {
@@ -578,7 +575,6 @@ function StagedTaskEditor({ team, task, modelDirectory, onPendingChange, t }: {
         dependencies: dependencies.split(',').map((item) => item.trim()).filter(Boolean),
         difficulty,
         ...role.trim() === '' ? {} : { role },
-        ...route,
       })
       setSavedSignature(signature)
       setFeedback({ tone: 'success', message: t('plan.saved') })
@@ -591,23 +587,6 @@ function StagedTaskEditor({ team, task, modelDirectory, onPendingChange, t }: {
   const save = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault()
     await persist()
-  }
-  /** An explicit picker choice is a hard route; it persists immediately. */
-  const applyRoute = async (selection: PlanModelSelection): Promise<void> => {
-    setProvider(selection.provider)
-    setModel(selection.model)
-    setReasoningEffort(selection.reasoningEffort)
-    await persist({
-      provider: selection.provider,
-      model: selection.model,
-      reasoning_effort: selection.reasoningEffort,
-    })
-  }
-  const clearRoute = async (): Promise<void> => {
-    setProvider('')
-    setModel('')
-    setReasoningEffort('')
-    await persist({ provider: '', model: '' })
   }
   const remove = async (): Promise<void> => {
     setBusy(true)
@@ -674,16 +653,7 @@ function StagedTaskEditor({ team, task, modelDirectory, onPendingChange, t }: {
                 <small>{t('plan.task.dependenciesHint')}</small>
               </label>
             </span>
-            <StagedModelPicker
-              directory={modelDirectory}
-              provider={provider}
-              model={model}
-              reasoningEffort={reasoningEffort}
-              busy={busy}
-              onChange={(selection) => { void applyRoute(selection) }}
-              t={t}
-            />
-            <small className={css.planModelHint}>{t('plan.task.routeHint')}</small>
+            <small className={css.planModelHint}>{t('plan.task.difficultyHint')}</small>
           </fieldset>
           {confirmingRemove && (
             <span className={css.planConfirm} role="alert">
@@ -694,7 +664,6 @@ function StagedTaskEditor({ team, task, modelDirectory, onPendingChange, t }: {
           )}
           <span className={css.planActions}>
             <Feedback value={feedback} />
-            <button type="button" disabled={busy || !explicitRoute} onClick={() => { void clearRoute() }}>{t('plan.task.routeClear')}</button>
             <button type="button" data-danger onClick={() => { setConfirmingRemove(true); setFeedback(undefined) }} disabled={busy || confirmingRemove}>{t('plan.remove')}</button>
             <button type="submit" disabled={busy || !dirty || subject.trim() === ''}>{busy ? t('plan.saving') : t('plan.save')}</button>
           </span>
@@ -865,7 +834,7 @@ export function StagingPlanEditor({ team, modelDirectory, onContinuePlanning, on
           <div id={tasksId} className={css.planList}>
             {team.tasks.length === 0
               ? <p className={css.planEmpty}>{t('plan.tasks.empty')}</p>
-              : team.tasks.map((task) => <StagedTaskEditor key={task.id} team={team} task={task} modelDirectory={modelDirectory} onPendingChange={onPendingChange} t={t} />)}
+              : team.tasks.map((task) => <StagedTaskEditor key={task.id} team={team} task={task} onPendingChange={onPendingChange} t={t} />)}
           </div>
         )}
       </section>

@@ -65,7 +65,11 @@ const SCORECARD_KEYWORDS = [
   'hard root cause, safety-critical, irreversible or a public contract',
   'score higher rather than lower',
   'the tier is a task property, not a member property',
-  'inflating a tier burns money instead of buying insurance',
+  // 2026-10-10 去路由：此处原为 'inflating a tier burns money instead of buying
+  // insurance'。难度不再映射任何线路池，也就与成本无关——那句话现在是**假的**，
+  // 必须换成「纯展示属性」的真实表述。这是与本次退役直接相关的语义修正，
+  // 不是对既有英文措辞的无谓改写。
+  'presentation attribute only',
 ]
 
 /** The one-line English criteria summary shared by every difficulty parameter. */

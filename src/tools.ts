@@ -61,14 +61,7 @@ import type { AcceptanceResult, CommandResult, ReviewFinding, ReviewVerdict, Tas
 import {
   DEFAULT_TASK_DIFFICULTY,
   DEFAULT_TASK_ROLE,
-  memberReuseKey,
-  normalizeRole,
-  recordRouteEvent,
-  resolveTaskRoute,
   validateTaskRouteFields,
-  valueRouterOf,
-  type TaskRouteFields,
-  type TaskRouteResolution,
   type TaskDifficulty,
 } from './router.ts'
 import {
@@ -131,9 +124,7 @@ export type StagedPlanMutation =
       executionPrompt?: string | null
       /**
        * Provenance of the member's `provider`/`model`. The staged UI sends
-       * `user` (a pin: it outranks the task-derived route and must be
-       * dispatchable); the captain's tool path sends `captain`. Absent leaves the
-       * stored provenance untouched, so an unrelated edit cannot drop a pin.
+       * `user` (the human picked it); the captain's tool path sends `captain`.
        */
       routeSource?: 'user' | 'captain' | null
     }
@@ -144,15 +135,9 @@ export type StagedPlanMutation =
       description?: string | null
       assignee?: string | null
       dependencies: string[]
-      /** Task routing intent; absent fields leave the stored value untouched. */
+      /** Task presentation fields; absent fields leave the stored value untouched. */
       difficulty?: string | null
       role?: string | null
-      route?: { provider?: string | null; model?: string | null; reasoning_effort?: string | null } | null
-      /**
-       * Provenance of an explicit `route`. The staged UI sends `user`; the
-       * captain's tool path always means `captain`. Absent means `captain`.
-       */
-      routeSource?: 'user' | 'captain' | null
     }
   | {
       action: 'add_task'
@@ -162,554 +147,101 @@ export type StagedPlanMutation =
       dependencies: string[]
       difficulty?: string | null
       role?: string | null
-      route?: { provider?: string | null; model?: string | null; reasoning_effort?: string | null } | null
-      routeSource?: 'user' | 'captain' | null
     }
   | { action: 'remove_task'; taskId: string }
   | { action: 'remove_member'; memberName: string }
 
 /**
- * Route shape shared by tool arguments and the Web staging surface.
+ * Task presentation fields shared by tool arguments and the Web staging surface.
  *
- * `provider` + `model` together are an **explicit** route request; supplying
- * only one of them is an error rather than a silent partial route.
+ * 2026-10-10 去路由：这里**不再有** provider/model/reasoning_effort。任务不再
+ * 承载任何线路信息——模型只属于成员。
  */
 export interface TaskRouteArguments {
   difficulty?: unknown
   role?: unknown
-  provider?: unknown
-  model?: unknown
-  reasoning_effort?: unknown
 }
 
-/** Tool-argument descriptors for the task routing fields (spread into parameters). */
+/**
+ * Tool-argument descriptors for the task presentation fields (spread into parameters).
+ *
+ * Difficulty is a **presentation attribute**: it describes how hard the task is
+ * and never selects a member's model.
+ */
 export const TASK_ROUTE_PARAMETERS = {
   difficulty: {
     type: 'string' as const,
     enum: ['low', 'medium', 'high', 'max'],
-    description: 'Task difficulty tier. Missing means medium. Marks the row as a routing intent. '
+    description: 'Task difficulty tier. Missing means medium. A presentation attribute only: it describes how hard the '
+      + 'task itself is and does NOT select any member model — members run on the model the user assigned them in the plan panel. '
       + 'Score by convergence, not topic: low = mechanical single-point change; medium = one module with explicit acceptance; '
       + 'high = cross-module with trade-offs and regression risk; max = hard root cause, safety-critical, irreversible or public contract. '
-      + 'When unsure, score higher rather than lower; inflating a tier burns money instead of buying insurance.',
+      + 'When unsure, score higher rather than lower.',
   },
   role: {
     type: 'string' as const,
     description: 'Free-text role for this task (for example "engineer", "  Code   Reviewer "). Missing means general. '
-      + 'Stored trimmed and lowercased as normalizedRole, which is part of the member reuse key.',
-  },
-  provider: {
-    type: 'string' as const,
-    description: 'Optional explicit route provider. Requires model. The captain\'s preference is used when valid and '
-      + 'merely recorded as rejected when not; only a user edit in the staged plan makes it a hard route.',
-  },
-  model: {
-    type: 'string' as const,
-    description: 'Optional explicit route model. Requires provider.',
-  },
-  reasoning_effort: {
-    type: 'string' as const,
-    description: 'Optional reasoning effort for the explicit route. Empty means the target model\'s own default.',
+      + 'Stored trimmed and lowercased as normalizedRole. Write it in the user\'s current conversation language.',
   },
 }
 
-/** Provenance of an explicit route: the Web staging surface says `user`, everything else is the captain. */
-function routeSourceOf(mutation: { routeSource?: 'user' | 'captain' | null }): 'user' | 'captain' {
-  return mutation.routeSource === 'user' ? 'user' : 'captain'
-}
-
 /**
- * What happens when a **user** hard route cannot be dispatched.
+ * 任务展示字段（难度 / 角色）的一次编辑。
  *
- * - `block-approval` — the staged path. A human is looking at the plan and can
- *   still fix or clear the route, so the whole approval is rejected.
- * - `queue` — the automatic creation path. There is no approval moment and
- *   nobody to intervene, so failing the whole team creation over one route would
- *   be the wrong trade. The task is left undispatchable instead: `routeStatus`
- *   recorded, no `resolvedRoute`, reason recorded as a runtime event.
+ * 2026-10-10 去路由后，任务不再承载任何线路信息：本结构只有展示字段，
+ * 因此不再有 `route`/`routeSource` 的清除与派生语义。
  */
-export type UserRouteUnavailablePolicy = 'block-approval' | 'queue'
-
-/**
- * Re-resolve every task's routing intent against the live model catalog.
- *
- * Runs inside the caller's team lock, **before** anything is frozen onto
- * `team.json` and before any member is spawned. Behaviour:
- *
- * - Value Router absent → returns immediately; the team keeps its original
- *   behaviour and nothing about routing is recorded.
- * - A task resolves → `routeStatus` / `routeResolvedSource` / `resolvedRoute` /
- *   `routeAudit` are recorded on the task.
- * - A task whose **user** hard route is unavailable → `block-approval` rejects
- *   the approval. That is the one case where a human must intervene; the plan
- *   must not be approved with a route that cannot be dispatched. `queue` cannot
- *   reject anything and records the reason instead.
- * - Any other unresolvable task → left `pending` with a queue reason recorded as
- *   a runtime event, because an empty tier must not block an otherwise valid
- *   plan. It is never downgraded and never silently given a different model.
- *
- * Rotation is allocated per difficulty in plan order, so two tasks on the same
- * tier land on different routes deterministically.
- */
-export async function revalidateTaskRoutes(
-  ctx: Context,
-  fresh: TeamState,
-  options: { userRouteUnavailable?: UserRouteUnavailablePolicy } = {},
-): Promise<void> {
-  const policy = options.userRouteUnavailable ?? 'block-approval'
-  const service = valueRouterOf(ctx as unknown as { get(key: never): unknown })
-  if (service === undefined) return
-  const rotations = new Map<string, number>()
-  const blocked: string[] = []
-  for (const task of fresh.tasks) {
-    const difficulty = task.difficulty ?? DEFAULT_TASK_DIFFICULTY
-    const rotationIndex = rotations.get(difficulty) ?? 0
-    const outcome = await resolveTaskRoute(service, {
-      difficulty,
-      role: task.role ?? DEFAULT_TASK_ROLE,
-      route: task.route,
-      routeSource: task.routeSource,
-      rotationIndex,
-      teamId: fresh.id,
-      taskId: task.id,
-    })
-    if (!outcome.available) return
-    const resolution = outcome.resolution
-    if (resolution.dispatchable) rotations.set(difficulty, rotationIndex + 1)
-    task.routeStatus = resolution.routeStatus
-    task.routeResolvedSource = resolution.routeSource
-    task.routeAudit = resolution.audit
-    if (resolution.dispatchable) {
-      task.resolvedRoute = {
-        provider: resolution.provider,
-        model: resolution.model,
-        reasoning_effort: resolution.reasoning_effort,
-      }
-    } else {
-      delete task.resolvedRoute
-      const reason = resolution.reason ?? resolution.routeStatus
-      if (task.routeSource === 'user' && policy === 'block-approval') {
-        blocked.push(
-          `${task.id}（用户指定 ${task.route?.provider ?? '?'}/${task.route?.model ?? '?'}`
-          + `：${reason}）`,
-        )
-      } else {
-        recordRouteEvent(service, {
-          type: 'queue',
-          teamId: fresh.id,
-          taskId: task.id,
-          difficulty,
-          ...task.normalizedRole === undefined ? {} : { role: task.normalizedRole },
-          routeStatus: resolution.routeStatus,
-          queueReason: reason,
-          detail: resolution.audit.at(-1)?.detail ?? '',
-        })
-      }
-    }
-  }
-  if (blocked.length > 0) {
-    throw new Error(
-      `plan approval blocked: user-specified routes are unavailable (${blocked.join('；')}). `
-      + 'Fix the route or clear it, then approve again.',
-    )
-  }
-}
-
-/**
- * Shape the roster so every resolved task has a member that can actually run it.
- *
- * The rules are the contract, not heuristics:
- * - **Same reuse key reuses a member.** Tasks are grouped by `memberReuseKey`
- *   (`difficulty · role · provider · model · reasoning_effort`) and one member
- *   serves the whole group. Two tasks that resolve to the same provider/model but
- *   declare different difficulties are therefore **two** groups, not one:
- *   difficulty is part of slot identity and the unit of in-tier rotation.
- * - **A different reuse key needs a separate member.** Two groups never share one.
- * - **At `maxMembers` the excess merely queues.** Those tasks keep their resolved
- *   route — never downgraded, never handed a different model — and get a
- *   `queueReason` the activity panel renders.
- *
- * A member the captain already assigned to a group's tasks is honoured first;
- * otherwise an idle member whose frozen `routeKey` matches is reused.
- */
-export function planMemberSlots(fresh: TeamState, maxMembers: number): void {
-  const groups = new Map<string, {
-    route: { provider: string; model: string; reasoning_effort: string }
-    difficulty: TaskDifficulty
-    normalizedRole: string
-    tasks: TeamTask[]
-    preferredMember?: string
-  }>()
-  for (const task of fresh.tasks) {
-    if (task.routeStatus !== 'resolved' || task.resolvedRoute === undefined) continue
-    const difficulty = task.difficulty ?? DEFAULT_TASK_DIFFICULTY
-    const normalizedRole = task.normalizedRole ?? DEFAULT_TASK_ROLE
-    const key = memberReuseKey({
-      difficulty,
-      normalizedRole,
-      provider: task.resolvedRoute.provider,
-      model: task.resolvedRoute.model,
-      reasoning_effort: task.resolvedRoute.reasoning_effort,
-    })
-    const preferred = task.assignee !== undefined && task.assignee !== CAPTAIN_KEY ? task.assignee : undefined
-    const group = groups.get(key) ?? {
-      route: task.resolvedRoute,
-      difficulty,
-      normalizedRole,
-      tasks: [] as TeamTask[],
-      ...preferred === undefined ? {} : { preferredMember: preferred },
-    }
-    group.tasks.push(task)
-    groups.set(key, group)
-  }
-  if (groups.size === 0) return
-
-  const activeMembers = (): TeamMember[] => fresh.members.filter((member) => member.status !== 'removed')
-  const taken = new Set<string>()
-  for (const [key, group] of groups) {
-    // 1) Honour the member the captain already assigned to these tasks.
-    let member = group.preferredMember === undefined
-      ? undefined
-      : activeMembers().find((candidate) => candidate.name === group.preferredMember && !taken.has(candidate.name))
-    // 2) Otherwise reuse a member that already froze this exact route.
-    if (member === undefined) {
-      member = activeMembers().find((candidate) => candidate.routeKey === key && !taken.has(candidate.name))
-    }
-    if (member !== undefined) {
-      taken.add(member.name)
-      for (const task of group.tasks) {
-        task.assignee = member.name
-        delete task.queueReason
-      }
-      continue
-    }
-    // 3) A new member is needed. Create one only while the cap allows it.
-    if (activeMembers().length < maxMembers) {
-      const created: TeamMember = {
-        id: '',
-        name: nextSlotMemberName(fresh, group.difficulty, group.normalizedRole),
-        provider: group.route.provider,
-        model: group.route.model,
-        // An empty effort means "the target model's own default", which is
-        // expressed by omitting the field rather than sending an empty id.
-        ...group.route.reasoning_effort === '' ? {} : { reasoningEffort: group.route.reasoning_effort },
-        routeKey: key,
-        difficulty: group.difficulty,
-        normalizedRole: group.normalizedRole,
-        joinedAt: Date.now(),
-        status: 'idle',
-      }
-      fresh.members.push(created)
-      taken.add(created.name)
-      for (const task of group.tasks) {
-        task.assignee = created.name
-        delete task.queueReason
-      }
-      continue
-    }
-    // 4) At the cap: queue. The route is deliberately left untouched.
-    for (const task of group.tasks) {
-      delete task.assignee
-      task.queueReason = `maxMembers (${maxMembers})：同一 memberReuseKey 的成员槽位已满，任务排队；不降档、不换模型`
-    }
-  }
-}
-
-/**
- * Reject an approval whose **pinned** member route cannot be dispatched.
- *
- * A member the user pinned in the staged plan is a hard route in its own right,
- * so it gets the same treatment as a user task route: an unavailable pin stops
- * the approval instead of being silently swapped. The value-router service is
- * the only judge of availability, so this asks it rather than re-deriving
- * catalog rules here.
- *
- * The service records one audit event per `resolve()`; that event is attributed
- * to `member:<name>` so it cannot be mistaken for a task dispatch.
- */
-export async function revalidateMemberRoutes(ctx: Context, fresh: TeamState): Promise<void> {
-  const service = valueRouterOf(ctx as unknown as { get(key: never): unknown })
-  if (service === undefined) return
-  const blocked: string[] = []
-  for (const member of fresh.members) {
-    if (member.routeSource !== 'user') continue
-    if (member.provider === undefined || member.model === undefined) continue
-    if (member.provider === '' || member.model === '') continue
-    const pinned = frozenRouteOf(fresh, member.name)
-    const outcome = await resolveTaskRoute(service, {
-      difficulty: pinned?.difficulty ?? DEFAULT_TASK_DIFFICULTY,
-      role: pinned?.normalizedRole ?? member.normalizedRole ?? member.role ?? DEFAULT_TASK_ROLE,
-      route: { provider: member.provider, model: member.model, reasoning_effort: member.reasoningEffort ?? '' },
-      routeSource: 'user',
-      teamId: fresh.id,
-      taskId: `member:${member.name}`,
-    })
-    if (!outcome.available) return
-    if (outcome.resolution.dispatchable) continue
-    blocked.push(
-      `成员 ${member.name}（用户硬路由 ${member.provider}/${member.model}`
-      + `：${outcome.resolution.reason ?? outcome.resolution.routeStatus}）`,
-    )
-  }
-  if (blocked.length > 0) {
-    throw new Error(
-      `plan approval blocked: user-pinned member routes are unavailable (${blocked.join('；')}). `
-      + 'Fix the route or clear it, then approve again.',
-    )
-  }
-}
-
-/**
- * Freeze a user pin onto the member and keep its tasks' records truthful.
- *
- * A pin is an explicit human decision, so it outranks the route derived from the
- * member's tasks. The tasks it serves are then re-stamped with the pinned route:
- * `task.resolvedRoute` is read by the activity panel and by the durable-state
- * validators, and a record claiming a line the member does not run on would be a
- * lie.
- */
-export function applyMemberRoutePins(fresh: TeamState): void {
-  const at = Date.now()
-  for (const member of fresh.members) {
-    if (member.routeSource !== 'user') continue
-    if (member.provider === undefined || member.model === undefined) continue
-    if (member.provider === '' || member.model === '') continue
-    const pinned = {
-      provider: member.provider,
-      model: member.model,
-      reasoning_effort: member.reasoningEffort ?? '',
-    }
-    for (const task of fresh.tasks) {
-      if (task.assignee !== member.name) continue
-      if (task.routeStatus !== 'resolved') continue
-      const current = task.resolvedRoute
-      if (current !== undefined
-        && current.provider === pinned.provider
-        && current.model === pinned.model
-        && current.reasoning_effort === pinned.reasoning_effort) continue
-      task.resolvedRoute = pinned
-      task.routeResolvedSource = 'user'
-      task.routeAudit = [
-        ...(task.routeAudit ?? []),
-        {
-          at,
-          step: 'member-route',
-          outcome: 'ok',
-          detail: `成员 ${member.name} 的用户硬路由 ${pinned.provider}/${pinned.model} 取代了本次档位解析结果`,
-        },
-      ]
-    }
-  }
-}
-
-/** Deterministic, collision-free member name for a route-derived slot. */
-function nextSlotMemberName(fresh: TeamState, difficulty: string, normalizedRole: string): string {
-  const base = sanitizeKey(`${difficulty}-${normalizedRole}`) || 'member'
-  const taken = new Set(fresh.members.map((member) => member.name))
-  taken.add(CAPTAIN_KEY)
-  if (!taken.has(base)) return base
-  for (let suffix = 2; suffix < 1_000; suffix += 1) {
-    const candidate = `${base}-${suffix}`
-    if (!taken.has(candidate)) return candidate
-  }
-  return `${base}-${Date.now()}`
-}
-
-/** The unique resolved route shared by a member's resolved tasks, when they agree. */
-export function frozenRouteOf(team: TeamState, memberName: string): {
-  provider: string
-  model: string
-  reasoning_effort: string
-  difficulty: string
-  normalizedRole: string
-} | undefined {
-  const seen = new Map<string, {
-    provider: string
-    model: string
-    reasoning_effort: string
-    difficulty: string
-    normalizedRole: string
-  }>()
-  for (const task of team.tasks) {
-    if (task.assignee !== memberName) continue
-    if (task.routeStatus !== 'resolved' || task.resolvedRoute === undefined) continue
-    const key = memberReuseKey({
-      difficulty: task.difficulty ?? DEFAULT_TASK_DIFFICULTY,
-      normalizedRole: task.normalizedRole ?? DEFAULT_TASK_ROLE,
-      provider: task.resolvedRoute.provider,
-      model: task.resolvedRoute.model,
-      reasoning_effort: task.resolvedRoute.reasoning_effort,
-    })
-    seen.set(key, {
-      provider: task.resolvedRoute.provider,
-      model: task.resolvedRoute.model,
-      reasoning_effort: task.resolvedRoute.reasoning_effort,
-      difficulty: task.difficulty ?? DEFAULT_TASK_DIFFICULTY,
-      normalizedRole: task.normalizedRole ?? DEFAULT_TASK_ROLE,
-    })
-  }
-  if (seen.size === 0) return undefined
-  if (seen.size > 1) {
-    const routes = [...seen.values()].map(route => `${route.provider}/${route.model}（${route.difficulty}/${route.normalizedRole}）`)
-    throw new Error(
-      `member "${memberName}" owns tasks that resolve to ${seen.size} different routes (${routes.join('，')}); `
-      + 'split them across separate members before approving.',
-    )
-  }
-  return [...seen.values()][0]
-}
-
-/**
- * Map the captain's `task_*` operation fields onto a routing edit.
- *
- * Returns an empty object when the operation says nothing about routing, so the
- * stored difficulty/role/route stay untouched (and their resolution and audit
- * trail survive an unrelated edit). Sending `task_provider` **and** `task_model`
- * both empty clears an existing explicit route.
- */
-export function taskRouteEditFrom(operation: {
-  task_difficulty?: string | null
-  task_role?: string | null
-  task_provider?: string | null
-  task_model?: string | null
-  task_reasoning_effort?: string | null
-}, label = 'operation'): {
-  difficulty?: string | null
-  role?: string | null
-  route?: { provider: string; model: string; reasoning_effort: string } | null
-  routeSource?: 'user' | 'captain'
-} {
-  const mentionsRoute = operation.task_provider !== undefined || operation.task_model !== undefined
-    || operation.task_reasoning_effort !== undefined
-  const provider = (operation.task_provider ?? '').trim()
-  const model = (operation.task_model ?? '').trim()
-  const edit: {
-    difficulty?: string | null
-    role?: string | null
-    route?: { provider: string; model: string; reasoning_effort: string } | null
-    routeSource?: 'user' | 'captain'
-  } = {}
-  if (operation.task_difficulty !== undefined) edit.difficulty = operation.task_difficulty
-  if (operation.task_role !== undefined) edit.role = operation.task_role
-  if (mentionsRoute) {
-    if (provider === '' && model === '') {
-      edit.route = null
-    } else {
-      if (provider === '' || model === '') throw new Error(`${label}: a task route requires both task_provider and task_model`)
-      edit.route = { provider, model, reasoning_effort: (operation.task_reasoning_effort ?? '').trim() }
-      edit.routeSource = 'captain'
-    }
-  }
-  return edit
-}
-
-/**
- * A routing edit as it arrives from either the tool layer (flat provider/model
- * arguments) or the Web staging surface (a nested `route` object).
- *
- * `route === null` clears an existing explicit route; `route === undefined`
- * leaves it untouched. The same distinction applies to `difficulty` and `role`.
- */
-export interface RouteEdit {
+export interface TaskPresentationEdit {
   difficulty?: unknown
   role?: unknown
-  route?: { provider?: unknown; model?: unknown; reasoning_effort?: unknown } | null
-  routeSource?: 'user' | 'captain' | null
 }
 
 /**
- * Fold flat tool arguments into a `RouteEdit`.
- *
- * Returns `route: undefined` when neither provider nor model was supplied, and
- * `route: null` when the caller explicitly asked to clear the route. Supplying
- * only one of provider/model is a hard error: a half route would otherwise be
- * dropped somewhere downstream, which is exactly the kind of quiet failure this
- * plugin must not have.
- */
-export function routeEditFromArguments(args: TaskRouteArguments): RouteEdit {
-  const provider = typeof args.provider === 'string' ? args.provider.trim() : ''
-  const model = typeof args.model === 'string' ? args.model.trim() : ''
-  const effort = typeof args.reasoning_effort === 'string' ? args.reasoning_effort : ''
-  const clear = args.provider === null || args.model === null
-  if (clear) {
-    return {
-      ...(args.difficulty === undefined ? {} : { difficulty: args.difficulty }),
-      ...(args.role === undefined ? {} : { role: args.role }),
-      route: null,
-    }
-  }
-  if (provider === '' && model === '') {
-    return {
-      ...(args.difficulty === undefined ? {} : { difficulty: args.difficulty }),
-      ...(args.role === undefined ? {} : { role: args.role }),
-    }
-  }
-  if (provider === '' || model === '') {
-    throw new Error('an explicit task route requires both provider and model')
-  }
-  return {
-    ...(args.difficulty === undefined ? {} : { difficulty: args.difficulty }),
-    ...(args.role === undefined ? {} : { role: args.role }),
-    route: { provider, model, reasoning_effort: effort },
-  }
-}
-
-/**
- * Apply a routing edit onto a task record.
+ * Apply a presentation edit onto a task record.
  *
  * Absent fields leave the stored value untouched, so a partial edit can neither
- * reset difficulty nor silently drop an existing explicit route. Illegal values
- * raise instead of falling back to a default: a model that wrote
- * `difficulty: "URGENT"` must be told, not silently routed as medium.
+ * reset difficulty nor silently drop the stored role. Illegal values raise
+ * instead of falling back to a default: a model that wrote
+ * `difficulty: "URGENT"` must be told, not silently stored as medium.
  *
- * Any edit also **invalidates the previous resolution** (`routeStatus` /
- * `routeResolvedSource` / the audit trail are replaced by a fresh `validate`
- * entry): a stale `resolved` must never survive an edit, or approval could
- * commit a route nobody revalidated.
+ * 本函数**只写展示字段**：不再有线路解析，因此也不需要"让上一次解析失效"
+ * ——那是去路由后已消失的概念。
  */
-export function applyRouteEdit(task: TeamTask, edit: RouteEdit): void {
+export function applyTaskPresentationEdit(task: TeamTask, edit: TaskPresentationEdit): void {
   const difficulty = edit.difficulty === undefined || edit.difficulty === null
     ? (task.difficulty ?? DEFAULT_TASK_DIFFICULTY)
     : edit.difficulty
   const role = edit.role === undefined || edit.role === null
     ? (task.role ?? DEFAULT_TASK_ROLE)
     : edit.role
-  const existingRoute = task.route === undefined
-    ? undefined
-    : { provider: task.route.provider, model: task.route.model, reasoning_effort: task.route.reasoning_effort }
-  const route = edit.route === undefined ? existingRoute : edit.route
-  const routeSource = edit.route === undefined
-    ? task.routeSource
-    : route === null || route === undefined
-      ? undefined
-      : (edit.routeSource ?? routeSourceOf(edit))
 
-  const validation = validateTaskRouteFields({ difficulty, role, route, ...(routeSource === undefined ? {} : { routeSource }) })
+  const validation = validateTaskRouteFields({ difficulty, role })
   if (!validation.ok) throw new Error(validation.errors.join('; '))
   const fields = validation.fields
 
   task.difficulty = fields.difficulty
   task.role = fields.role
   task.normalizedRole = fields.normalizedRole
-  if (fields.route === undefined) {
-    delete task.route
-    delete task.routeSource
-  } else {
-    task.route = fields.route
-    task.routeSource = fields.routeSource
-  }
-  delete task.routeStatus
-  delete task.routeResolvedSource
-  task.routeAudit = [{
-    at: Date.now(),
-    step: 'validate',
-    outcome: 'ok',
-    detail: `difficulty=${fields.difficulty} role=${fields.normalizedRole}`
-      + (fields.route === undefined ? '' : ` route=${fields.route.provider}/${fields.route.model}（${fields.routeSource}）`),
-  }]
 }
 
-
-
+/**
+ * Map the captain's `task_*` operation fields onto a presentation edit.
+ *
+ * Returns an empty object when the operation says nothing about difficulty or
+ * role, so an unrelated edit (subject, assignee) leaves the stored values
+ * untouched. `task_provider` / `task_model` / `task_reasoning_effort` were the
+ * retired task-level route fields and are ignored here — tasks no longer carry
+ * a route of their own.
+ */
+export function taskPresentationEditFrom(operation: {
+  task_difficulty?: string | null
+  task_role?: string | null
+}): { difficulty?: string | null; role?: string | null } {
+  const edit: { difficulty?: string | null; role?: string | null } = {}
+  if (operation.task_difficulty !== undefined) edit.difficulty = operation.task_difficulty
+  if (operation.task_role !== undefined) edit.role = operation.task_role
+  return edit
+}
 /** Runtime bridge shared by model-facing tools and the Web staging surface. */
 export interface AgentTeamsRuntime {
   isPendingMember(agent: Agent): boolean
@@ -1114,15 +646,12 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
           task.description = trimmedOptional(mutation.description)
           task.assignee = trimmedOptional(mutation.assignee)
           task.dependencies = [...new Set(mutation.dependencies.map((item) => item.trim()).filter(Boolean))]
-          // Routing is only touched when the edit actually mentions it: an
-          // unrelated edit (subject, assignee) must not invalidate an existing
-          // resolution or discard its audit trail.
-          if (mutation.difficulty !== undefined || mutation.role !== undefined || mutation.route !== undefined) {
-            applyRouteEdit(task, {
+          // 展示字段只在编辑确实提到它们时才写：无关的编辑（subject、assignee）
+          // 不应改动已存的难度/角色。
+          if (mutation.difficulty !== undefined || mutation.role !== undefined) {
+            applyTaskPresentationEdit(task, {
               difficulty: mutation.difficulty,
               role: mutation.role,
-              route: mutation.route,
-              routeSource: mutation.routeSource,
             })
           }
           task.updatedAt = Date.now()
@@ -1143,12 +672,10 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
             createdAt: now,
             updatedAt: now,
           }
-          if (mutation.route !== undefined || mutation.difficulty !== undefined || mutation.role !== undefined) {
-            applyRouteEdit(task, {
+          if (mutation.difficulty !== undefined || mutation.role !== undefined) {
+            applyTaskPresentationEdit(task, {
               difficulty: mutation.difficulty,
               role: mutation.role,
-              route: mutation.route,
-              routeSource: mutation.routeSource,
             })
           }
           fresh.tasks.push(task)
@@ -1204,44 +731,26 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
       // placeholders before transitioning to the stricter running shape.
       fresh.members = fresh.members.filter((member) => member.status !== 'removed')
       validateStagedGraph(fresh, true)
-      // Final revalidation: nothing is frozen onto team.json and no member is
-      // spawned before every task's routing intent has been re-resolved against
-      // the live model catalog. A user hard route that is unavailable blocks the
-      // whole approval rather than being silently replaced.
-      await revalidateTaskRoutes(ctx, fresh)
-      // A member the user pinned is a hard route in its own right: it must be
-      // dispatchable before anything is frozen, exactly like a user task route.
-      await revalidateMemberRoutes(ctx, fresh)
-      // Shape the roster by final route: tasks that resolve to the same member
-      // reuse key share one member, a different route gets its own slot, and the
-      // excess queues once the global cap is reached. Members added here are
-      // ordinary members and go through the same route resolution and catalog
-      // validation as captain-authored ones below.
-      planMemberSlots(fresh, config.maxMembers)
-      // A user pin outranks the route derived from the member's tasks, so apply
-      // it after slot planning and keep the tasks' records truthful.
-      applyMemberRoutePins(fresh)
+      // 2026-10-10 去路由后的批准序列：这里**不再**解析任何任务线路，也不再按
+      // 难度派生成员槽位。成员名单就是用户在计划面板里定下的那一份，每个成员的
+      // 模型由用户选定并在下面冻结；任务只保留难度/角色作为展示属性。
+      //
+      // 仍然要做的一件事：把每个成员的线路解析成具体的 provider/model/effort，
+      // 并在**任何成员被创建之前**逐个对照 provider 目录校验，避免把一个拼错的
+      // 模型写进 team.json 后到第一次派发才炸。
       validateStagedGraph(fresh, true)
       const selections = []
       for (const member of fresh.members) {
-        const taskRoute = frozenRouteOf(fresh, member.name)
         const selection = await resolveMemberLlmSelection(ctx, captain, {
-          provider: taskRoute?.provider ?? member.provider,
-          model: taskRoute?.model ?? member.model,
-          reasoningEffort: taskRoute?.reasoning_effort ?? member.reasoningEffort,
+          provider: member.provider,
+          model: member.model,
+          reasoningEffort: member.reasoningEffort,
           fallback: member.fallback,
         }, runSignal)
         selections.push(selection)
         member.provider = selection.provider
         member.model = selection.model
         member.reasoningEffort = selection.reasoningEffort
-        member.routeKey = memberReuseKey({
-          difficulty: taskRoute?.difficulty ?? member.difficulty ?? DEFAULT_TASK_DIFFICULTY,
-          normalizedRole: taskRoute?.normalizedRole ?? member.normalizedRole ?? DEFAULT_TASK_ROLE,
-          provider: selection.provider,
-          model: selection.model,
-          reasoning_effort: selection.reasoningEffort ?? '',
-        })
       }
       await validateMemberLlmSelections(ctx, selections, runSignal)
       fresh.phase = 'running'
@@ -1344,29 +853,28 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
 
   ctx.tools.register(defineTool({
     name: 'agent_teams_create',
-    description: 'Create a team. Use approval=required for a two-phase plan: members and tasks remain unspawned/unclaimed until the user reviews the Web plan and explicitly approves it. Optional profiles expand their configured roster; seed profiles also expand template tasks, while captain profiles leave the graph for the Captain to design. approval=automatic preserves the legacy immediate-execution path.',
+    description: 'Create a team. Use approval=required for a two-phase plan: members and tasks remain unspawned/unclaimed until the user reviews the Web plan and explicitly approves it — the user picks or confirms each member\'s model there. Optional profiles expand their configured roster; seed profiles also expand template tasks, while captain profiles leave the graph for the Captain to design. approval=automatic preserves the legacy immediate-execution path.',
     parameters: {
-      name: { type: 'string', required: true, description: 'Name for the new team (used as its stable id).' },
-      description: { type: 'string', description: 'Team purpose / the goal the team will work on.' },
+      name: { type: 'string', required: true, description: 'Team name (used as its stable id). Write it in the user\'s current conversation language.' },
+      description: { type: 'string', description: 'Team purpose / the goal the team will work on. Write it in the user\'s current conversation language.' },
       profile: { type: 'string', description: 'Optional configured profile name.' },
-      agencyTeam: { type: 'string', description: 'Optional agency-agents team id or name. Supplies the whole roster (persona + duty + instructions per expert, member names are expert slugs, and provider/model stay empty so the value router fills them). Requires the agency-agents plugin; mutually exclusive with profile and with plan.members, allowed with plan.tasks. Rejected with a reason when the bridge is unavailable.' },
+      agencyTeam: { type: 'string', description: 'Optional agency-agents team id or name. Supplies the whole roster (persona + duty + instructions per expert, member names are expert slugs, and provider/model stay empty until the user picks each member\'s model in the plan panel). Requires the agency-agents plugin; mutually exclusive with profile and with plan.members, allowed with plan.tasks. Rejected with a reason when the bridge is unavailable.' },
       plan: {
         type: 'object', additionalProperties: false,
         description: 'Optional complete ordinary-work roster and DAG in one atomic call, instead of separate add_member/create_task rounds. Mutually exclusive with profile. For quality gates use create_task with the explicit quality contract.',
         properties: {
           members: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
-            name: { type: 'string', required: true }, role: { type: 'string' },
+            name: { type: 'string', required: true, description: 'Member display name. Write it in the user\'s current conversation language.' },
+            role: { type: 'string', description: 'Member role. Write it in the user\'s current conversation language.' },
             provider: { type: 'string' }, model: { type: 'string' }, reasoning_effort: { type: 'string' },
           } } },
           tasks: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
             id: { type: 'string', required: true, description: 'Local reference used by dependencies in this plan; the result maps it to a durable task id.' },
-            subject: { type: 'string', required: true }, description: { type: 'string' }, assignee: { type: 'string' },
+            subject: { type: 'string', required: true, description: 'Task subject. Write it in the user\'s current conversation language.' },
+            description: { type: 'string', description: 'Task description. Write it in the user\'s current conversation language.' }, assignee: { type: 'string' },
             dependencies: { type: 'array', items: { type: 'string' } },
-            difficulty: { type: 'string', enum: ['low', 'medium', 'high', 'max'], description: 'Task difficulty tier. Missing means medium. Score by convergence, not topic: low = mechanical single-point change; medium = one module with explicit acceptance; high = cross-module with trade-offs and regression risk; max = hard root cause, safety-critical, irreversible or public contract. When unsure, score higher rather than lower; inflating a tier burns money instead of buying insurance.' },
-            role: { type: 'string', description: 'Free-text task role. Missing means general.' },
-            provider: { type: 'string', description: 'Optional explicit route provider (a captain preference); requires model.' },
-            model: { type: 'string', description: 'Optional explicit route model; requires provider.' },
-            reasoning_effort: { type: 'string', description: 'Optional reasoning effort for the explicit route; empty means the model default.' },
+            difficulty: { type: 'string', enum: ['low', 'medium', 'high', 'max'], description: 'Task difficulty tier. Missing means medium. A presentation attribute only: it describes how hard the task itself is and does NOT select any member model. Score by convergence, not topic: low = mechanical single-point change; medium = one module with explicit acceptance; high = cross-module with trade-offs and regression risk; max = hard root cause, safety-critical, irreversible or public contract. When unsure, score higher rather than lower.' },
+            role: { type: 'string', description: 'Free-text task role. Missing means general. Write it in the user\'s current conversation language.' },
           } } },
         },
       },
@@ -1633,20 +1141,17 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
             },
             member_name: { type: 'string', description: 'Member name for update_member or remove_member.' },
             task_id: { type: 'string', description: 'Task id for update_task or remove_task.' },
-            subject: { type: 'string', description: 'Required for add_task; optional replacement for update_task.' },
+            subject: { type: 'string', description: 'Required for add_task; optional replacement for update_task. Write it in the user\'s current conversation language.' },
             description: { type: 'string', description: 'Optional task description.' },
             assignee: { type: 'string', description: 'Optional task assignee; an empty string moves it to the shared pool.' },
             dependencies: { type: 'array', items: { type: 'string' }, description: 'Complete replacement dependency list for a task.' },
             role: { type: 'string', description: 'Optional member role.' },
-            provider: { type: 'string', description: 'Optional member provider; defaults to the current staged route.' },
-            model: { type: 'string', description: 'Optional member model; defaults to the current staged route.' },
+            provider: { type: 'string', description: 'Optional member provider; defaults to the member\'s current route.' },
+            model: { type: 'string', description: 'Optional member model; defaults to the member\'s current route.' },
             reasoning_effort: { type: 'string', description: 'Optional member reasoning effort.' },
             execution_prompt: { type: 'string', description: 'Optional member-specific execution prompt.' },
-            task_difficulty: { type: 'string', enum: ['low', 'medium', 'high', 'max'], description: 'Task routing only: difficulty tier. Omit to leave the stored tier untouched. Score by convergence, not topic: low = mechanical single-point change; medium = one module with explicit acceptance; high = cross-module with trade-offs and regression risk; max = hard root cause, safety-critical, irreversible or public contract. When unsure, score higher rather than lower; inflating a tier burns money instead of buying insurance.' },
-            task_role: { type: 'string', description: 'Task routing only: free-text role (the member role uses `role`). Omit to leave it untouched.' },
-            task_provider: { type: 'string', description: 'Task routing only: explicit route provider. Send together with task_model; send both empty to clear the route.' },
-            task_model: { type: 'string', description: 'Task routing only: explicit route model. Send together with task_provider.' },
-            task_reasoning_effort: { type: 'string', description: 'Task routing only: reasoning effort for the explicit route; empty means the model default.' },
+            task_difficulty: { type: 'string', enum: ['low', 'medium', 'high', 'max'], description: 'Task difficulty tier. Omit to leave the stored tier untouched. A presentation attribute only: it describes how hard the task itself is and does NOT select any member model. Score by convergence, not topic: low = mechanical single-point change; medium = one module with explicit acceptance; high = cross-module with trade-offs and regression risk; max = hard root cause, safety-critical, irreversible or public contract. When unsure, score higher rather than lower.' },
+            task_role: { type: 'string', description: 'Task presentation only: free-text role (the member role uses `role`). Omit to leave it untouched. Write it in the user\'s current conversation language.' },
           },
         },
       },
@@ -1690,8 +1195,8 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
             model: operation.model?.trim() || member.model || '',
             reasoningEffort: operation.reasoning_effort ?? member.reasoningEffort,
             executionPrompt: operation.execution_prompt ?? member.executionPrompt,
-            // The model-facing path never produces a human pin: only an explicit
-            // provider/model choice here is a captain preference.
+            // 2026-10-10 去路由：模型面不再产生任务线路，但成员线路仍分「用户选定」
+            // 与「队长偏好」两种来源——显式指定 provider 时记为 captain。
             ...operation.provider?.trim() ? { routeSource: 'captain' as const } : {},
           }
         }
@@ -1706,7 +1211,7 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
             description: operation.description ?? task.description,
             assignee: operation.assignee ?? task.assignee,
             dependencies: operation.dependencies ?? task.dependencies,
-            ...taskRouteEditFrom(operation, label),
+            ...taskPresentationEditFrom(operation),
           }
         }
         if (operation.action === 'add_task') {
@@ -1718,7 +1223,7 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
             description: operation.description,
             assignee: operation.assignee,
             dependencies: operation.dependencies ?? [],
-            ...taskRouteEditFrom(operation, label),
+            ...taskPresentationEditFrom(operation),
           }
         }
         if (operation.action === 'remove_task') {
@@ -1780,7 +1285,7 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
     name: 'agent_teams_add_member',
     description: 'Add a member to the team roster. Planning and idle roster rows do not call a model. After approval, the member session starts with its first ready task or explicit message and remains durable for later work.',
     parameters: {
-      name: { type: 'string', required: true, description: 'Unique member name inside the team.' },
+      name: { type: 'string', required: true, description: 'Unique member name inside the team. Write it in the user\'s current conversation language.' },
       role: { type: 'string', description: 'Role of the member (e.g. researcher, engineer, reviewer).' },
       provider: { type: 'string', description: 'Optional LLM provider route. Use only when the user explicitly requests a different provider; requires model.' },
       model: { type: 'string', description: 'Optional model override. Omit for the captain\'s current model (or the configured memberModel default).' },
@@ -1936,7 +1441,7 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
     name: 'agent_teams_create_task',
     description: 'Create a task in your team\'s task list. Use kind=work (default) for research, repository audits and general tasks. kind=review is only a quality gate for an existing implementation/repair task via reviewedTaskId. Every call must include a non-empty subject, including verification and review tasks. Tasks can depend on other tasks (dependencies): a task is only claimable once every dependency is completed. Optionally assign it to a member, who still claims it before working.',
     parameters: {
-      subject: { type: 'string', required: true, description: 'Required non-empty title for this task. Never omit it, including for verification or review tasks.' },
+      subject: { type: 'string', required: true, description: 'Required non-empty title for this task. Never omit it, including for verification or review tasks. Write it in the user\'s current conversation language.' },
       description: { type: 'string', description: 'What needs to be done, in detail.' },
       ...TASK_ROUTE_PARAMETERS,
       dependencies: {
@@ -2066,10 +1571,9 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
           ...input.sourceFindingIds === undefined ? {} : { sourceFindingIds: input.sourceFindingIds },
           ...input.coverageOf === undefined ? {} : { coverageOf: input.coverageOf },
         }
-        // Task routing intent: difficulty/role are always materialized (defaults
-        // medium/general) so every created task carries an explicit routing row;
-        // an explicit route stays optional.
-        applyRouteEdit(task, routeEditFromArguments(args))
+        // 难度/角色总是落定（缺省 medium/general），使每个任务都带一条明确的展示行；
+        // 任务不再有显式线路（2026-10-10 去路由）。
+        applyTaskPresentationEdit(task, { difficulty: args.difficulty, role: args.role })
         fresh.taskSeq += 1
         fresh.tasks.push(task)
         await writeTeam(stateRoot, fresh)
@@ -3065,7 +2569,6 @@ async function initializeProfileTeam(input: {
       difficulty: template.difficulty,
       role: template.role,
       normalizedRole: template.normalizedRole,
-      ...template.route === undefined ? {} : { route: template.route, routeSource: 'captain' as const },
       createdAt: now,
       updatedAt: now,
     })),
@@ -3075,42 +2578,23 @@ async function initializeProfileTeam(input: {
   // member with its first actual task once its dependencies are satisfied.
   if (input.inlinePlan !== undefined) delete draft.profile
 
-  // A staged plan defers route resolution to approval, where a human can still
-  // fix an unavailable user hard route. The automatic path has no such moment:
-  // resolving here is what makes task-level routing work on it at all, and an
-  // unavailable user route queues instead of failing the whole creation.
-  if (!input.staged) {
-    await revalidateTaskRoutes(input.ctx, draft, { userRouteUnavailable: 'queue' })
-    planMemberSlots(draft, input.config.maxMembers)
-    applyMemberRoutePins(draft)
-  }
+  // 2026-10-10 去路由：两条创建路径都不再有「解析任务线路 / 按难度派生槽位」这一步。
+  // 阵容就是模板或 agency 团队给出的那一份；每个成员的模型在下面的冻结循环里
+  // 解析成具体线路并对照 provider 目录校验。
 
   const selections: Awaited<ReturnType<typeof resolveMemberLlmSelection>>[] = []
   for (const member of draft.members) {
-    const taskRoute = frozenRouteOf(draft, member.name)
     const selection = await resolveMemberLlmSelection(input.ctx, input.captain, {
-      provider: taskRoute?.provider ?? member.provider,
-      model: taskRoute?.model ?? member.model,
+      provider: member.provider,
+      model: member.model,
       defaultModel: input.config.memberModel,
-      reasoningEffort: taskRoute?.reasoning_effort ?? member.reasoningEffort,
+      reasoningEffort: member.reasoningEffort,
       fallback: member.fallback,
     }, input.exec.signal)
     selections.push(selection)
     member.provider = selection.provider
     member.model = selection.model
     member.reasoningEffort = selection.reasoningEffort
-    // Freeze the key exactly as `approveStagedTeam` does, so an authored member
-    // ends up with the same record shape on both creation paths. Guarding this on
-    // `member.routeKey !== undefined` would have skipped every member the profile
-    // authored — the field is only pre-set for slots `planMemberSlots` minted —
-    // and left the two paths disagreeing about the same member.
-    member.routeKey = memberReuseKey({
-      difficulty: taskRoute?.difficulty ?? member.difficulty ?? DEFAULT_TASK_DIFFICULTY,
-      normalizedRole: taskRoute?.normalizedRole ?? member.normalizedRole ?? DEFAULT_TASK_ROLE,
-      provider: selection.provider,
-      model: selection.model,
-      reasoning_effort: selection.reasoningEffort ?? '',
-    })
   }
   await validateMemberLlmSelections(input.ctx, selections, input.exec.signal)
 
@@ -3123,12 +2607,11 @@ async function initializeProfileTeam(input: {
  *
  * Differences from {@link initializeProfileTeam}, all deliberate:
  * - members are **assembled** with a persona-composed `executionPrompt` and no
- *   route of their own (the agency team never pins a model). The shared freeze
- *   loop below then stamps `provider`/`model`/`reasoningEffort`/`routeKey` before
- *   the team is written, exactly as the profile path does — inheriting the
- *   captain's route when no task route is known yet — so a staged agency team
- *   carries the same member record shape, and approval re-anchors each member
- *   from its task's difficulty tier;
+ *   model of their own (the agency team never pins one). The shared freeze loop
+ *   below then stamps `provider`/`model`/`reasoningEffort` before the team is
+ *   written — inheriting the captain's route when the assembly named none — so a
+ *   staged agency team carries the same member record shape, and the human picks
+ *   each member's model in the plan panel before approval;
  * - the captain's task rows ride along untouched (the task graph is orthogonal
  *   to the roster); each task keeps its local seed id in `profileSeedId`;
  * - the coordinator's own fields are returned to the captain in the tool
@@ -3161,10 +2644,10 @@ async function initializeAgencyTeam(input: {
     members: input.assembly.members.map((member) => ({
       id: '',
       name: member.name,
-      // No route here: the assembly never pins one. The freeze loop below runs
+      // No model here: the assembly never pins one. The freeze loop below runs
       // for staged creation too (same contract as every other create path), so
-      // the written record still carries provider/model/routeKey; approval
-      // re-anchors them from each member's task difficulty.
+      // the written record still carries provider/model/reasoningEffort; the
+      // user picks each member's model in the plan panel before approval.
       executionPrompt: member.executionPrompt === '' ? undefined : member.executionPrompt,
       joinedAt: now,
       status: 'idle' as const,
@@ -3181,44 +2664,29 @@ async function initializeAgencyTeam(input: {
       difficulty: task.difficulty,
       role: task.role,
       normalizedRole: task.normalizedRole,
-      ...task.route === undefined ? {} : { route: task.route, routeSource: 'captain' as const },
       createdAt: now,
       updatedAt: now,
     })),
     taskSeq: input.planTasks.length,
   }
 
-  // Same contract as every other create path: resolve routes before anything is
-  // frozen, so an authored member ends up with the same shape whether it came
-  // from a profile, an inline plan, or an agency team. Agency members supply no
-  // route of their own, so every slot here is derived from their tasks.
-  if (!input.staged) {
-    await revalidateTaskRoutes(input.ctx, draft, { userRouteUnavailable: 'queue' })
-    planMemberSlots(draft, input.config.maxMembers)
-    applyMemberRoutePins(draft)
-  }
+  // 2026-10-10 去路由：与其它创建路径同一契约——阵容已定，这里只把每个成员的
+  // 线路解析成具体的 provider/model/effort 并在写盘前对照 provider 目录校验。
+  // agency 成员自身不指定模型，因此未指定时继承队长线路（由 resolveMemberLlmSelection 决定）。
 
   const selections: Awaited<ReturnType<typeof resolveMemberLlmSelection>>[] = []
   for (const member of draft.members) {
-    const taskRoute = frozenRouteOf(draft, member.name)
     const selection = await resolveMemberLlmSelection(input.ctx, input.captain, {
-      provider: taskRoute?.provider ?? member.provider,
-      model: taskRoute?.model ?? member.model,
+      provider: member.provider,
+      model: member.model,
       defaultModel: input.config.memberModel,
-      reasoningEffort: taskRoute?.reasoning_effort ?? member.reasoningEffort,
+      reasoningEffort: member.reasoningEffort,
       fallback: member.fallback,
     }, input.exec.signal)
     selections.push(selection)
     member.provider = selection.provider
     member.model = selection.model
     member.reasoningEffort = selection.reasoningEffort
-    member.routeKey = memberReuseKey({
-      difficulty: taskRoute?.difficulty ?? member.difficulty ?? DEFAULT_TASK_DIFFICULTY,
-      normalizedRole: taskRoute?.normalizedRole ?? member.normalizedRole ?? DEFAULT_TASK_ROLE,
-      provider: selection.provider,
-      model: selection.model,
-      reasoning_effort: selection.reasoningEffort ?? '',
-    })
   }
   await validateMemberLlmSelections(input.ctx, selections, input.exec.signal)
 

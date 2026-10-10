@@ -250,16 +250,7 @@ export declare function taskVisualState(status: string, dependencies: readonly s
 export declare function taskDepthsById(tasks: readonly TeamTask[]): Map<string, number>;
 /** Most recent route-audit entries an activity task row keeps (re-resolution appends without bound). */
 export declare const ROUTE_AUDIT_SNAPSHOT_LIMIT = 12;
-/**
- * The most recent route-audit steps plus how many older ones were cut, for the
- * activity task row. `total`/`truncated` count the durable record before
- * truncation, so the panel can say "…and N more" instead of silently dropping
- * the earlier steps of the chain.
- * @param routeAudit - the durable audit trail (may be anything from disk).
- * @returns the bounded projection, or `undefined` when no audit trail exists.
- */
-export declare function projectRouteAudit(routeAudit: unknown): TeamRouteAuditProjection | undefined;
-/** The route fields one activity task row carries, projected from the durable record. */
+/** The legacy route fields one activity task row carries, projected for read-only history. */
 export interface TeamTaskRouteProjection {
     routeAudit?: TeamRouteAuditProjection;
     /** The last resolution degraded to a lower difficulty tier. */
@@ -270,7 +261,16 @@ export interface TeamTaskRouteProjection {
     reasoningEffort?: string;
 }
 /**
- * Project one task's route data onto the activity row shape.
+ * The most recent route-audit steps plus how many older ones were cut.
+ *
+ * 2026-10-10 去路由后本插件不再产生新的审计条目；保留这个投影只为让**旧团队**
+ * 磁盘上已有的审计轨迹仍可在面板里读出来（历史可读，不再新增）。
+ * @param routeAudit - the durable audit trail (may be anything from disk).
+ * @returns the bounded projection, or `undefined` when no audit trail exists.
+ */
+export declare function projectRouteAudit(routeAudit: unknown): TeamRouteAuditProjection | undefined;
+/**
+ * Project one task's **legacy** route data onto the activity row shape.
  *
  * `degraded`/`fallback` are derived from the **full** audit (before
  * truncation), so an older cut step still colors the flag; a `fallback`

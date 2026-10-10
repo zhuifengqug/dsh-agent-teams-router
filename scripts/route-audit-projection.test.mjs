@@ -1,12 +1,24 @@
 /**
  * 步 5（B 段数据层）：routeAudit 投影进团队快照的行为测试。
  *
+ * ## 2026-10-10 去路由退役（本文件保留，一处断言改写）
+ *
+ * 审计投影 `projectRouteAudit` / `projectTaskRouteActivity` **仍然保留**：它们不再
+ * 产生新数据，只服务于**旧团队** `team.json` 里遗留审计轨迹的只读回放（面板仍要
+ * 显示老团队当时怎么选的线路）。因此下面绝大多数投影断言照旧成立。
+ *
+ * 被改写的只有一条：本文件原先断言 `state.ts` 的 durable guard（`isTaskRouteAudit`）
+ * 会**拒绝**畸形 audit 条目（畸形 `route` 子对象 → `isTeamTask` 返回 false）。该
+ * 校验器已随退役删除，新契约是**容忍并忽略**：`isTeamTask` 不再因 `routeAudit` /
+ * `route` / `resolvedRoute` / `routeStatus` 等遗留键的缺失或畸形而返回 false。
+ * 断言相应改为钉住「容忍」，并保留一条反向证据证明校验器并非恒真。
+ *
  * 覆盖：
  * - audit 超过 12 条 → 只保留最近 12 条 + total/truncated 计数；
  * - 字段缺失 / 畸形数据不炸投影（缺省为空值，绝不抛错）；
  * - degraded / fallback 标志透传（tier-degrade、fallback 步骤 + fallback 来源）；
  * - reasoningEffort 取自 resolvedRoute.reasoning_effort（空值省略）；
- * - state.ts durable guard 同步：audit 条目的 route 子对象形状校验；
+ * - state.ts durable guard：遗留 route 键一律**容忍**（不再校验、不再拒绝）；
  * - 快照装配层字段落位与既有字段投影无回归；
  * - 典型 audit 的快照增量 ≤ 1KB。
  */
@@ -132,8 +144,9 @@ test('reasoningEffort 取自 resolvedRoute.reasoning_effort，空值省略', () 
   assert.equal(projectTaskRouteActivity({}).reasoningEffort, undefined)
 })
 
-test('state guard 同步：audit 条目带合法 route 子对象通过，畸形 route 拒绝', () => {
+test('state guard 去路由后的新行为：遗留 route 键一律容忍，不再因畸形而拒绝', () => {
   const base = { id: 't1', subject: 'x', status: 'pending', dependencies: [], createdAt: 1, updatedAt: 1 }
+  // 合法形状照旧通过（旧 team.json 的常规记录必须还能读出来）。
   const valid = {
     ...base,
     routeAudit: [
@@ -142,8 +155,19 @@ test('state guard 同步：audit 条目带合法 route 子对象通过，畸形 
     ],
   }
   assert.equal(isTeamTask(valid), true)
-  assert.equal(isTeamTask({ ...base, routeAudit: [entry({ route: 'nope' })] }), false)
-  assert.equal(isTeamTask({ ...base, routeAudit: [entry({ route: { provider: 42 } })] }), false)
+  // 去路由后这些字段已不参与校验：畸形值被忽略，记录仍然可读（否则旧团队读不出来）。
+  assert.equal(isTeamTask({ ...base, routeAudit: [entry({ route: 'nope' })] }), true, '畸形 route 子对象不再拒绝')
+  assert.equal(isTeamTask({ ...base, routeAudit: [entry({ route: { provider: 42 } })] }), true, '畸形 provider 不再拒绝')
+  assert.equal(isTeamTask({ ...base, routeAudit: 'junk' }), true, '非数组 routeAudit 不再拒绝')
+  assert.equal(
+    isTeamTask({ ...base, route: 'junk', resolvedRoute: 42, routeStatus: 'weird', routeSource: 9, routeResolvedSource: [], routeAudit: 'nope' }),
+    true,
+    '整组遗留 route 键都被容忍并忽略',
+  )
+  // 反向证据：校验器并非恒真——真正受管的字段仍然照旧拒绝。
+  assert.equal(isTeamTask({ ...base, difficulty: 'urgent' }), false, 'difficulty 仍在校验')
+  assert.equal(isTeamTask({ ...base, status: 'weird' }), false, 'status 仍在校验')
+  assert.equal(isTeamTask({ ...base, dependencies: [42] }), false, 'dependencies 仍在校验')
 })
 
 test('快照装配层：新字段落位且既有字段投影无回归', async () => {

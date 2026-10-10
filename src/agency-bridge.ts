@@ -5,9 +5,8 @@
  *
  * - **本插件完全不强依赖 agency-agents**：三个服务任一缺席（未安装、未启用、版本不匹配、
  *   形状不认识）都必须回到今天的 AgentTeams 行为，不报错、不降级、不发明替身。
- * - **三个服务只通过 `ctx.get()` 在调用时探测**（照 `src/router.ts` 的 `valueRouterOf()`）：
- *   模块级 `inject` 是**硬依赖**——写进 `inject` 数组会让 agency-agents 缺席时本插件
- *   整体不激活，与「任一缺失即整体回落」正好相反。
+ * - **三个服务只通过 `ctx.get()` 在调用时探测**：模块级 `inject` 是**硬依赖**——
+ *   写进 `inject` 数组会让 agency-agents 缺席时本插件整体不激活，与「任一缺失即整体回落」正好相反。
  * - **本模块全部是纯函数式形状**：服务句柄与方法返回值都以入参承接并自行校验形状，
  *   唯一接触 ctx 的入口是 `agencyServicesOf()`（只读 `get`），便于用 stub 做单测。
  *
@@ -117,7 +116,6 @@ export type AgencyServiceOutcome = AgencyServicesAbsent | AgencyServicesPresent
  * 能力探测：三个服务都在且方法都是函数就返回句柄，否则返回缺席。
  *
  * **永不抛错**（DESIGN A.4：服务缺失时必须功能完全回落，无异常日志）。
- * 与 `valueRouterOf()` 的差别只有「三个而不是一个」。
  */
 export function agencyServicesOf(ctx: { get(key: never): unknown } | undefined): AgencyServiceOutcome {
   if (ctx === undefined) {
@@ -198,7 +196,7 @@ export interface AgencyDiagnostic {
 /** 装配出来的一个成员候补（工具层再转成 `TeamMember`）。 */
 export interface AssembledMember {
   name: string
-  /** 留空 —— 交给 value-router 四档派发。 */
+  /** 留空 —— 由用户在计划面板为该成员选定模型。 */
   provider: undefined
   model: undefined
   reasoningEffort: undefined
@@ -401,7 +399,7 @@ export function composeExecutionPrompt(persona: string | undefined, duty?: strin
  * 纪律（DESIGN A.2 / A.3）：
  * - `name` = expertSlug；**同一 slug 重复出现时加 `-2`/`-3` 后缀**并记 diagnostics
  *   （persona 仍按原 slug 拉取，改名不影响正文）；
- * - `provider`/`model`/`reasoningEffort` **全部留空** → 走 value-router 四档；
+ * - `provider`/`model`/`reasoningEffort` **全部留空** → 由用户在计划面板选定；
  * - persona 正文按需读，且**只读本团这几个成员**，不预加载全量 catalog 正文；
  * - persona 超 {@link PERSONA_MAX_CHARS} 截断 + diagnostics；
  *   缺 persona 用 duty + instructions 兜底 + diagnostics；
@@ -564,7 +562,6 @@ export interface AgencyPlanTaskRow {
   difficulty: TaskDifficulty
   role: string
   normalizedRole: string
-  route?: { provider: string; model: string; reasoning_effort: string }
 }
 
 /**
@@ -605,14 +602,11 @@ function normalizeAgencyPlanTask(value: unknown, index: number): AgencyPlanTaskR
   const description = optionalRawText(raw['description'], `${path}.description`)
   const assignee = optionalRawText(raw['assignee'], `${path}.assignee`)
   const dependencies = readDependencies(raw['dependencies'], `${path}.dependencies`)
-  const mentionsRoute = raw['provider'] !== undefined || raw['model'] !== undefined
-    || raw['reasoning_effort'] !== undefined
+  // 2026-10-10 去路由：`provider`/`model`/`reasoning_effort` 不再是任务字段，
+  // 这里只校验难度/角色这两个展示字段。
   const routing = validateTaskRouteFields({
     difficulty: raw['difficulty'],
     role: raw['role'],
-    route: mentionsRoute
-      ? { provider: raw['provider'], model: raw['model'], reasoning_effort: raw['reasoning_effort'] }
-      : undefined,
   })
   if (!routing.ok) throw new Error(`plan task "${id}": ${routing.errors.join('; ')}`)
   return {
@@ -624,7 +618,6 @@ function normalizeAgencyPlanTask(value: unknown, index: number): AgencyPlanTaskR
     difficulty: routing.fields.difficulty,
     role: routing.fields.role,
     normalizedRole: normalizeRole(routing.fields.role),
-    ...routing.fields.route === undefined ? {} : { route: routing.fields.route },
   }
 }
 

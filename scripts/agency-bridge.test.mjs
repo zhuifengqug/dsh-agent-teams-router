@@ -6,11 +6,24 @@
  *
  * 覆盖（对应 acceptance）：
  * 1. 三服务任一缺失 → available:false + 缺席清单；全能 services 缺方法也回落；
- * 2. inject 数组与源码里没有任何 agency 服务名（只读依赖，照 valueRouterOf 模式）；
- * 3. 成员装配：name=expertSlug、重复 -2 后缀、路由三字段留空、executionPrompt 三段合成；
+ * 2. inject 数组与源码里没有任何 agency 服务名（只读依赖，照 `agencyServicesOf()` 模式）；
+ * 3. 成员装配：name=expertSlug、重复 -2 后缀、模型三字段留空（由创建时冻结循环填）、
+ *    executionPrompt 三段合成；
  * 4. 回落矩阵：team 不存在（列出可用 id）/ persona 缺失兜底 / 超 8000 截断 / 超 maxMembers 报错；
  * 5. 冲突矩阵：×profile 报错、×plan.members 报错、×plan.tasks 允许；
  * 6. 服务全缺时既有工具与 usage 段无回归。
+ *
+ * ## 2026-10-10 去路由退役（本文件两处改写）
+ *
+ * 用户裁决把「任务难度 → 外部路由服务自动决定成员模型」整套机制退役了：
+ * 任务不再有 `route`/`resolvedRoute`，成员不再有 `routeKey`/`difficulty`/
+ * `normalizedRole`，`memberReuseKey` / `applyMemberRoutePins` / `planMemberSlots`
+ * 等已从 `src/tools.ts` 删除。本文件据此删除/改写了以下内容：
+ * - 删除原「分派路径一律在创建时冻结成员线路」用例中依赖 `memberReuseKey` /
+ *   `applyMemberRoutePins` / `member.routeKey` 的断言，改为钉住**仍然有效**的部分：
+ *   两条创建路径共用同一个写盘前的「解析成员线路 → 对照 provider 目录校验」冻结循环，
+ *   且该循环不被 created-staged 分支包住（两种创建方式写出同一形状的成员记录）。
+ * - `name` 参数描述已随本次改造改为中文，断言随之更新为当前描述文案。
  */
 
 import assert from 'node:assert/strict'
@@ -469,9 +482,21 @@ test('服务全缺时既有工具与 usage 段无回归', () => {
   assert.ok(properties.agencyTeam !== undefined, 'agencyTeam parameter is exposed')
   assert.equal(properties.agencyTeam.type, 'string')
   assert.match(properties.agencyTeam.description, /mutually exclusive with profile/)
-  // Existing parameters keep their descriptions.
-  assert.match(properties.name.description, /Name for the new team/)
+  // Existing parameters keep their descriptions. The team-name description gained the
+  // language requirement (2026-10-10 中文化约束), so match its unchanged lead only.
+  assert.match(properties.name.description, /Team name \(used as its stable id\)/)
   assert.equal(create.parameters.properties.plan.properties.tasks.items.properties.difficulty.enum.length, 4)
+
+  // 去路由（2026-10-10）：计划里的**任务行**不再暴露线路字段——难度/角色只做展示；
+  // 成员行仍暴露 provider/model/reasoning_effort，因为成员模型改由用户在面板选定。
+  const taskKeys = Object.keys(create.parameters.properties.plan.properties.tasks.items.properties)
+  for (const retired of ['provider', 'model', 'reasoning_effort']) {
+    assert.equal(taskKeys.includes(retired), false, `task rows must not expose the retired route field ${retired}`)
+  }
+  const memberKeys = Object.keys(create.parameters.properties.plan.properties.members.items.properties)
+  for (const kept of ['provider', 'model', 'reasoning_effort']) {
+    assert.equal(memberKeys.includes(kept), true, `member rows keep ${kept}: the user picks each member's model`)
+  }
 
   // The usage section is unchanged apart from the (step-3) scoring card.
   const text = usageSectionText(TEAM_TOOL_NAMES.join(', '))
@@ -481,24 +506,41 @@ test('服务全缺时既有工具与 usage 段无回归', () => {
   assert.equal(text.includes('agencyTeam'), false, 'usage text stays unaware of the optional bridge')
 })
 
-test('回归：分派路径一律在创建时冻结成员线路（agency 与 profile 同契约）', async () => {
-  // 2026-10-09 观察项：initializeAgencyTeam 的选路循环在 `if (!input.staged)`
-  // 守卫之外。核对 initializeProfileTeam 后确认这是**刻意**的——两条路径必须
-  // 写出同一形状的成员记录，且「成员线路创建时冻结」是既定硬约束；暂存团队在
-  // 批准时由 approveStagedTeam 按任务难度重锚。这条断言钉住该语义，防止有人
-  // 把循环挪进守卫（那会让暂存成员没有线路，两条路径形状分叉）。
+test('回归：两条创建路径共用同一个「解析成员线路 → 校验」冻结循环（且不被 staged 分支包住）', async () => {
+  // 2026-10-09 观察项：initializeAgencyTeam 的选路循环在 `if (!input.staged)` 守卫
+  // 之外。核对 initializeProfileTeam 后确认这是**刻意**的——两条路径必须写出同一
+  // 形状的成员记录，且「成员线路在创建时冻结」是既定硬约束。
+  //
+  // 2026-10-10 去路由：`if (!input.staged)` 守卫本身、`memberReuseKey` 派生的
+  // `member.routeKey` 冻结、以及 `applyMemberRoutePins(draft)` 都已随退役删除，
+  // 原断言不再有对象。仍然有效、也仍然值得钉住的是它的**内核**：两条路径共用同一个
+  // 写盘前的冻结循环（resolveMemberLlmSelection → validateMemberLlmSelections），
+  // 且该循环不被任何 staged 条件分支包住——否则暂存团队成员会没有线路，两条路径
+  // 形状分叉。同时钉住：任务行不再写任何线路字段。
   const source = await readFile(fileURLToPath(new URL('../src/tools.ts', import.meta.url)), 'utf8')
   for (const [label, fn] of [['initializeAgencyTeam', /async function initializeAgencyTeam/], ['initializeProfileTeam', /async function initializeProfileTeam/]]) {
     const start = source.search(fn)
     assert.ok(start > 0, `${label} must exist`)
     const body = source.slice(start, source.indexOf('\n}\n', start))
-    // 守卫内的解析 + 守卫外的冻结循环，两者都在同一函数体内。
-    assert.match(body, /if \(!input\.staged\) \{/, `${label}: staged guard present`)
-    assert.match(body, /member\.routeKey = memberReuseKey\(/, `${label}: routeKey is frozen on creation`)
+
+    // 共享的冻结循环：三个成员线路字段都被写死成一个具体值。
     assert.match(body, /member\.provider = selection\.provider/, `${label}: provider is frozen on creation`)
-    // 守卫只包住解析/编成，不能包住冻结循环。
-    const guardEnd = body.indexOf('}', body.indexOf('applyMemberRoutePins(draft)'))
-    const freezeAt = body.indexOf('member.routeKey = memberReuseKey(')
-    assert.ok(freezeAt > guardEnd, `${label}: the freeze loop must stay outside the staged guard`)
+    assert.match(body, /member\.model = selection\.model/, `${label}: model is frozen on creation`)
+    assert.match(body, /member\.reasoningEffort = selection\.reasoningEffort/, `${label}: effort is frozen on creation`)
+    // 冻结发生在对照 provider 目录校验之前，顺序不得倒置。
+    const freezeAt = body.indexOf('member.provider = selection.provider')
+    const validateAt = body.indexOf('await validateMemberLlmSelections(')
+    assert.ok(validateAt > freezeAt, `${label}: selections must be validated after the freeze loop`)
+
+    // staged 只决定落盘的 phase 标记（一个三元表达式），不得包住冻结循环。
+    const stagedAt = body.indexOf("...input.staged ? { phase: 'staged'")
+    assert.ok(stagedAt > 0, `${label}: the staged phase marker is still written`)
+    assert.ok(stagedAt < freezeAt, `${label}: the freeze loop must run for staged creation too`)
+    assert.equal(body.includes('if (!input.staged) {'), false, `${label}: the retired staged guard must be gone`)
+
+    // 退役面：任务行与函数体里都不再出现任何线路字段。
+    for (const retired of ['member.routeKey', 'memberReuseKey', 'applyMemberRoutePins', 'resolvedRoute', 'routeAudit', 'routeStatus']) {
+      assert.equal(body.includes(retired), false, `${label}: retired route symbol ${retired} must be gone`)
+    }
   }
 })

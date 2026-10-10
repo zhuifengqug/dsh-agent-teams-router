@@ -236,33 +236,6 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-/* ── B member view: routeKey five-segment chip ─────────────────────────── */
-
-.routeKeyChip {
-  display: inline-flex;
-  min-width: 0;
-  max-width: 100%;
-  align-items: center;
-  gap: 4px;
-  overflow: hidden;
-  color: var(--dsw-alias-label-tertiary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 8.5px;
-  line-height: 14px;
-}
-
-.routeKeySeg {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.routeKeySeg + .routeKeySeg::before {
-  color: var(--dsw-alias-label-caption);
-  content: '·';
-  margin-right: 4px;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .popoverCard {
     animation: none;

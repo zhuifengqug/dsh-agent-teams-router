@@ -8,7 +8,7 @@
  * @module dsh-agent-teams/types
  */
 
-import type { TaskDifficulty, TaskRouteAuditEntry, TaskRouteLine, TaskRouteSource, TaskRouteStatus } from './router.ts'
+import type { TaskDifficulty } from './router.ts'
 
 /** Task lifecycle statuses in progression order. */
 export type TaskStatus =
@@ -170,39 +170,33 @@ export interface TeamTask {
   /**
    * Task difficulty tier. Missing means `medium`.
    *
-   * Difficulty is the routing dimension: whoever dispatches a task may pick a
-   * tier instead of naming a model, and the model router turns that tier into a
-   * concrete provider/model/reasoning_effort.
+   * **展示属性，不参与路由**（2026-10-10 用户裁决）：难度只描述任务本身有多难，
+   * 供人读；它不再决定、也不再影响任何成员用哪个模型。成员模型由用户在计划
+   * 面板里逐成员选定并在创建时冻结。
    */
   difficulty?: TaskDifficulty
   /** Free-text role as written by the captain or the user. Missing means `general`. */
   role?: string
-  /** `role` after trim + whitespace collapsing + Unicode lowercasing. Part of the member reuse key. */
+  /** `role` after trim + whitespace collapsing + Unicode lowercasing. Presentation only. */
   normalizedRole?: string
   /**
-   * Optional **explicit** route request: provider/model/reasoning_effort.
+   * **Legacy read-only**: the retired route request / resolution / audit trail.
    *
-   * The user's hard route wins over everything; the captain's preference is
-   * used when valid and merely recorded as rejected when not. Absent means the
-   * task routes by difficulty.
+   * 2026-10-10 去路由后本插件**不再写入**这些字段。它们保留在类型里只有两个
+   * 用途：① 让面板仍能读出旧团队磁盘上已有的审计轨迹；② 让快照投影对旧记录
+   * 照常工作。新任务的这些字段一律不存在，也不要再依赖它们。
    */
-  route?: TaskRouteLine
-  /** Provenance of `route` when present: `user` (hard) or `captain` (preference). */
+  route?: { provider: string; model: string; reasoning_effort: string }
+  /** @deprecated 去路由后不再写入；仅为读取旧记录保留。 */
   routeSource?: 'user' | 'captain'
-  /** Outcome of the last validation/resolution: only `resolved` may be dispatched. */
-  routeStatus?: TaskRouteStatus
-  /** Where the last successful resolution actually got the route from. */
-  routeResolvedSource?: TaskRouteSource
-  /**
-   * The concrete route the last successful resolution produced.
-   *
-   * Kept separate from `route` (which is the *request*): a task may carry no
-   * request at all and still resolve to a concrete route from its difficulty
-   * tier. Members freeze themselves from this value, not from the request.
-   */
-  resolvedRoute?: TaskRouteLine
-  /** Audit trail of the last resolution, oldest first. */
-  routeAudit?: TaskRouteAuditEntry[]
+  /** @deprecated 去路由后不再写入；仅为读取旧记录保留。 */
+  routeStatus?: 'resolved' | 'pending' | 'blocked'
+  /** @deprecated 去路由后不再写入；仅为读取旧记录保留。 */
+  routeResolvedSource?: 'user' | 'captain' | 'difficulty' | 'fallback' | 'none'
+  /** @deprecated 去路由后不再写入；仅为读取旧记录保留。 */
+  resolvedRoute?: { provider: string; model: string; reasoning_effort: string }
+  /** @deprecated 去路由后不再写入；仅为读取旧记录保留。 */
+  routeAudit?: LegacyRouteAuditEntry[]
   /**
    * Why this task is waiting instead of running.
    *
@@ -214,6 +208,16 @@ export interface TeamTask {
   queueReason?: string
   createdAt: number
   updatedAt: number
+}
+
+/** One legacy route-audit entry as written by the retired route mechanism. */
+export interface LegacyRouteAuditEntry {
+  at: number
+  step: string
+  outcome: string
+  detail: string
+  tier?: string
+  route?: { provider?: string; model?: string; reasoning_effort?: string; status?: string }
 }
 
 /** One audit step as the activity snapshot carries it (bounded projection of the durable entry). */
@@ -263,25 +267,14 @@ export interface TeamMember {
   /** Whether the fallback route is currently active. */
   fallbackActive?: boolean
   /**
-   * Frozen member reuse key: `difficulty + normalizedRole + provider + model +
-   * reasoning_effort`. Two tasks that resolve to the same key must be served by
-   * the same member; a different key requires a separate member.
-   */
-  routeKey?: string
-  /**
    * Provenance of `provider`/`model`/`reasoningEffort`.
    *
-   * `user` = pinned by the human in the staged plan editor. A pin is an explicit
-   * decision: it outranks the route derived from the member's tasks, and it must
-   * be dispatchable or approval is rejected. `captain` = set through the
-   * model-facing plan tools. Absent = authored by a profile, or derived from the
-   * member's tasks by `planMemberSlots`.
+   * `user` = pinned by the human in the staged plan editor. Since 2026-10-10 the
+   * staged editor is the **only** way a member's route is decided, so this is
+   * normally `user`; `captain` remains for members a captain authored directly
+   * through the plan tools.
    */
   routeSource?: 'user' | 'captain'
-  /** Difficulty this member was frozen for (part of `routeKey`). */
-  difficulty?: string
-  /** Normalized role this member was frozen for (part of `routeKey`). */
-  normalizedRole?: string
   joinedAt: number
   status: MemberStatus
   /** Execution admission is closed while a failed/pending handoff is drained. */

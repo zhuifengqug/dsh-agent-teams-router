@@ -66,7 +66,6 @@ import { StagingPlanEditor } from './StagingPlanEditor.tsx'
 import type { AgentTeamsCardData } from './agent-teams-card-definition.ts'
 import type { AgentTeamsLocaleKey, AgentTeamsTranslate } from './locales.ts'
 import {
-  MemberRouteKey,
   RouteAuditPopover,
   difficultyBadge,
 } from './RouteDetails.tsx'
@@ -812,9 +811,8 @@ export function TeamSection({ team, modelDirectory, onContinuePlanning, onDiscar
                           {compactModelLabel(memberModel)}
                         </span>
                       )}
-                      {/* B member view: routeKey five-segment decomposition
-                          (difficulty/role/route) in mono label-tertiary. */}
-                      <MemberRouteKey member={member} />
+                      {/* 2026-10-10 去路由：成员不再有「线路键」分解可显示。
+                          成员卡片唯一的模型标识就是上面的 model 徽章。 */}
                       <span className={css.memberState} data-activity={member.activity}>
                         <WorkGlyph active={member.activity === 'working'} />
                         {discarded

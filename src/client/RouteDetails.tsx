@@ -1,15 +1,11 @@
 /**
- * Route presentation layer (DESIGN D, step 7).
+ * Legacy route-audit presentation.
  *
- * The shared popover recipe serves the per-task route audit (B): the
- * dsh-claude-style card baseline (D.3) with a 100 ms dwell before opening, a
- * 100 ms close grace after the pointer leaves, and only one popover open at a
- * time. The popover is an absolutely positioned overlay under `.panel`
- * (already `position: absolute`, which makes it the containing block) — no
- * body portal, no `position: fixed`. Steps follow the D.4 color table with
- * host status tokens only.
+ * 2026-10-10 去路由后本插件不再产生任何审计条目；本模块保留的唯一用途是让
+ * **旧团队**磁盘上已有的审计轨迹仍可在面板里读出来（历史可读，不再新增）。
+ * 新任务的 `routeAudit` 一律不存在，因此这些组件对新团队不渲染任何内容。
  *
- * Pure helpers (timing constants, `routeLine`, routeKey splitting) live in
+ * Pure helpers (timing constants, `routeLine`) live in
  * `route-details-model.ts` so offline tests can import the tsc output without
  * pulling in CSS.
  * @module dsh-agent-teams/client/route-details
@@ -21,7 +17,6 @@ import type { AgentTeamsLocaleKey, AgentTeamsTranslate } from './locales.ts'
 import {
   POPOVER_CLOSE_DELAY_MS,
   POPOVER_OPEN_DELAY_MS,
-  memberRouteKeyParts,
   routeLine,
 } from './route-details-model.ts'
 import css from './RouteDetails.module.css'
@@ -175,35 +170,6 @@ export function RouteAuditPopover({ task, t, popoverKey }: {
           </span>
         </span>
       )}
-    </span>
-  )
-}
-
-/**
- * Member row routeKey chip (B member view): the slot-identity segments the
- * member's own model badge does not already show, in mono `label-tertiary`.
- *
- * The member row already renders a compact model badge on the left, so the
- * `model` segment is intentionally left out here (2026-10-09 user decision:
- * one model label per row, not two). The full five-segment key stays in the
- * `title` and on the data attributes.
- */
-export function MemberRouteKey({ member }: {
-  readonly member: Parameters<typeof memberRouteKeyParts>[0]
-}) {
-  const parts = memberRouteKeyParts(member)
-  const { difficulty, role, provider, model, effort } = parts
-  const shown = [difficulty, role, provider, effort].filter((part) => part !== '')
-  if (shown.length === 0) return null
-  return (
-    <span className={css.routeKeyChip} data-route-key data-monospace-label
-      title={[difficulty, role, provider, model, effort].filter((part) => part !== '').join(' / ')}
-      data-route-key-model={model === '' ? undefined : model}
-    >
-      {difficulty !== '' && <span className={css.routeKeySeg} data-route-key-seg="difficulty">{difficulty}</span>}
-      {role !== '' && <span className={css.routeKeySeg} data-route-key-seg="role">{role}</span>}
-      {provider !== '' && <span className={css.routeKeySeg} data-route-key-seg="provider">{provider}</span>}
-      {effort !== '' && <span className={css.routeKeySeg} data-route-key-seg="effort">{effort}</span>}
     </span>
   )
 }

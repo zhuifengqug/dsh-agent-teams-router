@@ -49,21 +49,31 @@ export interface ActivityTask {
   readonly kind?: string
   readonly round?: number
   readonly verdict?: string
-  /** Routing tier when the task carries a routing row (`low`/`medium`/`high`/`max`). */
+  /**
+   * Task difficulty tier (`low`/`medium`/`high`/`max`).
+   *
+   * 2026-10-10 去路由：难度是**纯展示属性**，只描述任务本身有多难，不决定成员
+   * 用哪个模型。面板把它当徽章显示。
+   */
   readonly difficulty?: string
   /** Free-text role as stored on the task; absent when the host did not record one. */
   readonly role?: string
-  /** Outcome of the last route resolution: `resolved` | `pending` | `blocked`. */
+  /**
+   * @deprecated 遗留只读字段（2026-10-10 去路由）。
+   *
+   * 旧团队磁盘上仍可能带这些值，面板为了能读出历史审计轨迹而保留它们；
+   * 新任务不再产生任何一项。
+   */
   readonly routeStatus?: string
-  /** Where the resolved route came from: `user` | `captain` | `difficulty` | `fallback` | `none`. */
+  /** @deprecated 遗留只读字段，见 `routeStatus`。 */
   readonly routeSource?: string
-  /** Bounded audit trail of the last route resolution (host step-5 projection). */
+  /** @deprecated 遗留只读字段，见 `routeStatus`。 */
   readonly routeAudit?: ActivityRouteAuditProjection
-  /** The last resolution degraded to a lower difficulty tier (`tier-degrade` step). */
+  /** @deprecated 遗留只读字段，见 `routeStatus`。 */
   readonly degraded?: boolean
-  /** The last resolution used the global fallback route. */
+  /** @deprecated 遗留只读字段，见 `routeStatus`。 */
   readonly fallback?: boolean
-  /** Reasoning effort of the resolved route, when one exists and is set. */
+  /** @deprecated 遗留只读字段，见 `routeStatus`。 */
   readonly reasoningEffort?: string
   /**
    * Why this task is waiting instead of running.

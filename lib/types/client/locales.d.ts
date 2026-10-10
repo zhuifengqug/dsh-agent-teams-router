@@ -115,7 +115,6 @@ export declare const zh: {
     'route.auditSteps': string;
     'route.auditTruncated': string;
     'route.auditPendingDetail': string;
-    'member.routeKey': string;
     'task.detail.cancelled': string;
     'task.detail.failed': string;
     'task.detail.completed': string;
@@ -154,10 +153,9 @@ export declare const zh: {
     'plan.task.dependencies': string;
     'plan.task.dependenciesHint': string;
     'plan.task.difficulty': string;
+    'plan.task.difficultyHint': string;
     'plan.task.role': string;
     'plan.task.roleHint': string;
-    'plan.task.routeHint': string;
-    'plan.task.routeClear': string;
     'plan.task.unassigned': string;
     'plan.unsaved': string;
     'plan.save': string;
@@ -357,7 +355,6 @@ export declare const en: {
     'route.auditSteps': string;
     'route.auditTruncated': string;
     'route.auditPendingDetail': string;
-    'member.routeKey': string;
     'task.detail.cancelled': string;
     'task.detail.failed': string;
     'task.detail.completed': string;
@@ -396,10 +393,9 @@ export declare const en: {
     'plan.task.dependencies': string;
     'plan.task.dependenciesHint': string;
     'plan.task.difficulty': string;
+    'plan.task.difficultyHint': string;
     'plan.task.role': string;
     'plan.task.roleHint': string;
-    'plan.task.routeHint': string;
-    'plan.task.routeClear': string;
     'plan.task.unassigned': string;
     'plan.unsaved': string;
     'plan.save': string;

@@ -1,10 +1,14 @@
 /**
- * Pure route presentation helpers (DESIGN D, step 7).
+ * Pure route presentation helpers.
  *
  * Kept CSS-free and React-free so offline tests can import the tsc output
  * directly (`lib/client/route-details-model.js`), mirroring the
  * `activity-model.ts` pattern. The component half lives in
- * `RouteDetails.tsx`; see its module doc for the popover interaction rules.
+ * `RouteDetails.tsx`.
+ *
+ * 2026-10-10 去路由：成员侧的 `memberRouteKeyParts` 已随「成员线路键」概念一起
+ * 退役（成员不再有 difficulty/role/provider/model/effort 五段键）。保留的
+ * `routeLine` 只服务于**旧团队**遗留审计轨迹的只读展示。
  * @module dsh-agent-teams/client/route-details-model
  */
 
@@ -20,36 +24,4 @@ export function routeLine(provider: string, model: string, effort: string): stri
   const base = left !== '' && right !== '' ? `${left}/${right}` : right !== '' ? right : left
   const e = effort.trim()
   return base === '' ? (e === '' ? '' : `@${e}`) : e === '' ? base : `${base}@${e}`
-}
-
-/**
- * Member-row routeKey decomposition (B member view).
- *
- * The routeKey is `difficulty + normalizedRole + provider + model +
- * reasoning_effort`; the panel splits it into the D.4 five readable segments:
- * difficulty, role, provider, model, effort — mono `label-tertiary`.
- */
-export function memberRouteKeyParts(member: {
-  readonly provider?: string
-  readonly model?: string
-  readonly reasoningEffort?: string
-  readonly difficulty?: string
-  readonly normalizedRole?: string
-  readonly role?: string
-}): {
-  readonly difficulty: string
-  readonly role: string
-  readonly provider: string
-  readonly model: string
-  readonly effort: string
-} {
-  const provider = (member.provider ?? '').trim()
-  const model = (member.model ?? '').trim()
-  return {
-    difficulty: (member.difficulty ?? '').trim(),
-    role: (member.normalizedRole ?? member.role ?? '').trim(),
-    provider,
-    model,
-    effort: (member.reasoningEffort ?? '').trim(),
-  }
 }

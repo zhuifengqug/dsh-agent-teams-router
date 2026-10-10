@@ -1,125 +1,137 @@
 /**
- * 组合 smoke test：Agent Teams 的桥 **真实消费** dsh-value-router 的服务。
+ * 组合 smoke（Agent Teams 插件侧）：**没有任何外部路由依赖**也能正常装配。
  *
- * 这是「两者同时启用时服务闭环」的可执行证据，也是「没有 Value Router 时
- * Agent Teams 保持原行为」的反向证据：
+ * ## 2026-10-10 去路由退役（本文件重写）
  *
- * 1. 从 **已构建产物** 导入 dsh-value-router 的 `createRoutingService`（不是源码、
- *    不是替身），用桩 llm 提供宿主目录；
- * 2. 用 Agent Teams 真正使用的入口 `valueRouterOf` / `resolveTaskRoute` 去调用它；
- * 3. 断言四条闭环：用户硬路由胜出、队长非法路由被拒后自动重选、难度档位解析、
- *    四档全空时排队；
- * 4. 断言服务缺席时桥返回 `{available:false}`，调用方走原行为。
+ * 本文件原名「组合 smoke test：Agent Teams 的桥**真实消费** dsh-value-router 的服务」。
+ * 它从已构建产物导入 dsh-value-router 的 `createRoutingService`，再用 Agent Teams 真正
+ * 使用的入口 `valueRouterOf` / `resolveTaskRoute` 去调用它，钉住四条闭环（用户硬路由
+ * 胜出、队长非法路由被拒后自动重选、难度档位解析、四档全空时排队），外加「服务缺席时
+ * 桥返回 `{available:false}`」的反向证据。
+ *
+ * 用户裁决把「任务难度 → 外部路由服务自动决定成员模型」整套机制退役后：
+ * - `VALUE_ROUTER_SERVICE_KEY` / `valueRouterOf` / `resolveTaskRoute` /
+ *   `coerceResolution` / `recordRouteEvent` 已从 `src/router.ts` 删除；
+ * - 该组合所依赖的 `dsh-value-router` 也已不在本机插件目录中；
+ * - 因此**原文件的 6 个用例全部失去可测对象**，整体替换为本文件。
+ *
+ * ## 现在钉住的契约
+ *
+ * Agent Teams 不再依赖任何外部路由服务，所以「组合」的含义变成：**在没有路由服务、
+ * 没有任何 provider 目录**的前提下，插件自身的公开面仍然自洽可用——
+ * 1. 模块入口能加载，且**不再导出**任何路由桥符号（退役被回退会立刻失败）；
+ * 2. 难度/角色字段照常可校验，且只产出展示三字段；
+ * 3. 任务展示编辑（`applyTaskPresentationEdit`）只写难度/角色，**不残留**任何 route 字段；
+ * 4. 调度判定不看遗留 route 字段，pending + 依赖满足即可派发。
+ *
+ * 这个文件不再 import dsh-value-router，也不再需要桩服务。
  */
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { resolveTaskRoute, valueRouterOf } from '../lib/router.js'
-import { createRoutingService } from '../../dsh-value-router/lib/index.js'
+import { nextReadyTask } from '../lib/scheduler.js'
+import { applyTaskPresentationEdit, taskPresentationEditFrom } from '../lib/tools.js'
 
-const CATALOG = {
-  providers: [
-    { id: 'p', catalogKnown: true, models: [{ id: 'low-model' }, { id: 'high-model' }] },
-  ],
-  allowlist: undefined,
-  at: 0,
-}
+const router = await import('../lib/router.js')
+const tools = await import('../lib/tools.js')
 
-/** 真实服务 + 桩 llm（只实现 resolve 路径用到的方法）。 */
-function realService(config) {
-  return createRoutingService({
-    getConfig: () => config,
-    llm: () => ({
-      listProviders: () => CATALOG.providers.map(provider => ({ id: provider.id, name: provider.id })),
-      listModels: async (provider) => CATALOG.providers.find(item => item.id === provider)?.models ?? [],
-      resolveModelInfo: async (provider, model) => ({ provider, id: model, name: model }),
-    }),
-    readAllowlist: () => undefined,
-    now: () => 1_000,
-  })
-}
-
-const config = {
-  tiers: {
-    low: { lines: [{ provider: 'p', model: 'low-model', reasoning_effort: '' }] },
-    high: { lines: [{ provider: 'p', model: 'high-model', reasoning_effort: '' }] },
-  },
-  fallback: { provider: 'p', model: 'low-model', reasoning_effort: '' },
-}
-
-test('闭环：桥能探测到真实服务，并按难度档位解析出线路', async () => {
-  const service = realService(config)
-  const probe = valueRouterOf({ get: (key) => (key === 'valueRouterRouting' ? service : undefined) })
-  assert.equal(probe, service, 'valueRouterOf 必须认出真实服务对象')
-
-  const outcome = await resolveTaskRoute(service, { difficulty: 'high', role: 'engineer' }, 1_000)
-  assert.equal(outcome.available, true)
-  assert.equal(outcome.resolution.dispatchable, true)
-  assert.equal(outcome.resolution.model, 'high-model')
-  assert.equal(outcome.resolution.routeSource, 'difficulty')
-  assert.equal(outcome.resolution.fallback, false)
-})
-
-test('闭环：队长线路非法时只记录 route-rejected 并自动重选（任务不失败）', async () => {
-  const service = realService(config)
-  const outcome = await resolveTaskRoute(service, {
-    difficulty: 'low',
-    role: 'engineer',
-    route: { provider: 'p', model: 'ghost-model', reasoning_effort: '' },
-    routeSource: 'captain',
-  }, 1_000)
-  assert.equal(outcome.available, true)
-  assert.equal(outcome.resolution.dispatchable, true, '被拒的队长线路不能弄死任务')
-  assert.equal(outcome.resolution.model, 'low-model')
-  assert.equal(outcome.resolution.routeSource, 'difficulty')
-  assert.equal(outcome.resolution.audit.some(entry => entry.step === 'route-rejected'), true)
-})
-
-test('闭环：用户硬路由可用时胜出；不可用时挂起且不换线路、不走 fallback', async () => {
-  const service = realService(config)
-
-  const good = await resolveTaskRoute(service, {
-    difficulty: 'low', role: 'engineer',
-    route: { provider: 'p', model: 'high-model', reasoning_effort: '' },
-    routeSource: 'user',
-  }, 1_000)
-  assert.equal(good.resolution.model, 'high-model', '用户硬路由优先于难度档位')
-  assert.equal(good.resolution.routeSource, 'user')
-
-  const bad = await resolveTaskRoute(service, {
-    difficulty: 'low', role: 'engineer',
-    route: { provider: 'p', model: 'ghost-model', reasoning_effort: '' },
-    routeSource: 'user',
-  }, 1_000)
-  assert.equal(bad.resolution.dispatchable, false, '用户硬路由不可用必须挂起')
-  assert.equal(bad.resolution.routeStatus, 'pending')
-  assert.equal(bad.resolution.fallback, false)
-  assert.equal(bad.resolution.provider, '', '不得替用户换一条线路')
-})
-
-test('闭环：四档全空且无 fallback 时排队，桥把 queueReason 传给调用方', async () => {
-  const service = realService({ tiers: {}, fallback: undefined })
-  const outcome = await resolveTaskRoute(service, { difficulty: 'medium', role: 'general' }, 1_000)
-  assert.equal(outcome.available, true)
-  assert.equal(outcome.resolution.dispatchable, false)
-  assert.equal(outcome.resolution.routeStatus, 'pending')
-  assert.equal(outcome.resolution.reason, 'no-route')
-})
-
-test('闭环：服务侧审计被真实写入（resolve 自动落一条事件）', async () => {
-  const service = realService(config)
-  await resolveTaskRoute(service, { difficulty: 'low', role: 'engineer', teamId: 'demo', taskId: 't1' }, 1_000)
-  const events = service.events()
-  assert.equal(events.length, 1)
-  assert.equal(events[0].teamId, 'demo')
-  assert.equal(events[0].taskId, 't1')
-  assert.equal(events[0].type, 'dispatch')
-})
-
-test('反向证据：Value Router 缺席时桥返回 {available:false}，调用方保持原行为', async () => {
-  for (const absent of [undefined, {}, { record() {} }]) {
-    const outcome = await resolveTaskRoute(absent, { difficulty: 'low', role: 'general' })
-    assert.deepEqual(outcome, { available: false }, '缺席必须显式表达，不得发明替身')
+/** 最小 TeamTask 工厂：只填调度判定会读的字段。 */
+function task(id, fields = {}) {
+  return {
+    id,
+    subject: `task ${id}`,
+    status: fields.status ?? 'pending',
+    dependencies: fields.dependencies ?? [],
+    attempt: 0,
+    ...fields.assignee === undefined ? {} : { assignee: fields.assignee },
+    ...fields.routeStatus === undefined ? {} : { routeStatus: fields.routeStatus },
   }
+}
+
+test('退役面：router/tools 不再导出任何路由桥符号', () => {
+  for (const retired of [
+    'VALUE_ROUTER_SERVICE_KEY',
+    'valueRouterOf',
+    'resolveTaskRoute',
+    'recordRouteEvent',
+    'coerceResolution',
+    'memberReuseKey',
+  ]) {
+    assert.equal(router[retired], undefined, `router.js must not export the retired ${retired}`)
+  }
+  for (const retired of [
+    'revalidateTaskRoutes',
+    'planMemberSlots',
+    'revalidateMemberRoutes',
+    'applyMemberRoutePins',
+    'frozenRouteOf',
+  ]) {
+    assert.equal(tools[retired], undefined, `tools.js must not export the retired ${retired}`)
+  }
+})
+
+test('组合可加载：难度/角色校验照常工作，且只产出展示三字段', () => {
+  const result = router.validateTaskRouteFields({ difficulty: 'high', role: ' Reviewer ' })
+  assert.equal(result.ok, true)
+  if (!result.ok) return
+  assert.deepEqual(Object.keys(result.fields).sort(), ['difficulty', 'normalizedRole', 'role'])
+  assert.equal(result.fields.normalizedRole, 'reviewer')
+
+  const defaults = router.validateTaskRouteFields({})
+  assert.equal(defaults.ok, true)
+  if (!defaults.ok) return
+  assert.equal(defaults.fields.difficulty, 'medium')
+  assert.equal(defaults.fields.role, 'general')
+})
+
+test('组合可加载：任务展示编辑只写难度/角色，不残留任何 route 字段', () => {
+  const fresh = {}
+  applyTaskPresentationEdit(fresh, { difficulty: 'max', role: '  Code   Reviewer ' })
+  assert.deepEqual(Object.keys(fresh).sort(), ['difficulty', 'normalizedRole', 'role'])
+  assert.equal(fresh.difficulty, 'max')
+  assert.equal(fresh.role, 'Code   Reviewer')
+  assert.equal(fresh.normalizedRole, 'code reviewer')
+
+  // 旧记录上的遗留键保持原样（读旧团队时不改写、也不新增）。
+  const legacy = {
+    id: 't1',
+    route: { provider: 'p', model: 'm' },
+    resolvedRoute: { provider: 'p', model: 'm' },
+    routeStatus: 'resolved',
+    routeSource: 'user',
+    routeResolvedSource: 'difficulty',
+    routeAudit: [{ step: 'validate' }],
+  }
+  applyTaskPresentationEdit(legacy, { difficulty: 'low', role: 'engineer' })
+  assert.equal(legacy.routeStatus, 'resolved', '遗留键不得被改写')
+  assert.deepEqual(legacy.route, { provider: 'p', model: 'm' })
+  assert.equal(legacy.difficulty, 'low')
+
+  // 非法值必须报错，不得静默回落。
+  assert.throws(() => applyTaskPresentationEdit({}, { difficulty: 'urgent' }), /invalid difficulty/)
+})
+
+test('组合可加载：队长操作的展示编辑只看 difficulty/role，忽略已退役的线路参数', () => {
+  assert.deepEqual(taskPresentationEditFrom({ task_difficulty: 'high', task_role: 'Rev' }), {
+    difficulty: 'high',
+    role: 'Rev',
+  })
+  assert.deepEqual(
+    taskPresentationEditFrom({ task_provider: 'p', task_model: 'm', task_reasoning_effort: 'high' }),
+    {},
+    '已退役的 task_provider/task_model/task_reasoning_effort 必须被忽略',
+  )
+  assert.deepEqual(taskPresentationEditFrom({}), {})
+})
+
+test('组合可加载：调度判定不看遗留 route 字段（无路由服务也能派发）', () => {
+  assert.equal(nextReadyTask([task('t1', { routeStatus: 'pending' })], 'alice')?.id, 't1')
+  assert.equal(nextReadyTask([task('t2', { routeStatus: 'blocked' })], 'alice')?.id, 't2')
+  assert.equal(nextReadyTask([task('t3')], 'alice')?.id, 't3')
+  // 依赖未满足仍然拦截。
+  assert.equal(
+    nextReadyTask([task('t4', { status: 'in_progress' }), task('t5', { dependencies: ['t4'] })], 'alice'),
+    undefined,
+  )
 })

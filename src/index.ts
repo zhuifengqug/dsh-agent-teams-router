@@ -147,12 +147,13 @@ export function usageSectionText(toolNames: string, profilesText = ''): string {
 8. When full quality mode is requested: requirements → implementation → verification → review → integration. Plan the entire DAG while staged, including implementation before requirements finishes and integration depending on review round 1. Failed review automatically adds repair + next review and rewires pending downstream gates. Do not recreate this loop, omit integration or depend on a failed task. Review acceptance judges the latest implementation. Do not put smoke-test scripts into task instructions.
 9. Halted means the user stopped work (including the captain turn). Resume only on a later explicit user request with a reason, via agent_teams_resume or create_task({resume:true,resumeReason}); creating tasks alone never resumes. Escalated means the review loop hit its limit, not a halt. Deployment requires explicit user confirmation.
 10. Wait for all required tasks to be terminal and members idle/ready, present results, then delete/archive unless the user wants to continue. Never discard unfinished work without authorization.
-Difficulty scoring card — the explicit criteria behind task difficulty, which is what an empty member roster is filled from:
+Language rule (mandatory): write every human-facing string in the user's current conversation language — team name, member names, task subjects, task descriptions, task roles, and any plan summary you post. Do not emit English names or English task text when the user is writing Chinese. Keep tool names, ids, provider/model ids, file paths and code identifiers in their original form.
+Difficulty scoring card — difficulty is a **presentation attribute only**: it describes how hard the task itself is and does NOT select any member's model; members run on the model assigned to them in the plan panel. Score by convergence, not topic:
 - low — mechanical execution, a single-point change, breakage visible at once. Coding: copy or config edits, adding a field, running one command for its result. Research/writing: a single-source lookup, formatting.
 - medium — one module or one method, with an explicit acceptance. Coding: adding a tool parameter, one more test, one piece of UI copy logic. Research/writing: routine research, single-source analysis, a first draft.
 - high — cross-module or cross-file, requires trade-offs, carries regression risk. Coding: changing a service interface, refactoring a data flow, writing a quality gate. Research/writing: multi-source cross-validation, a design judgment.
 - max — hard root cause, safety-critical, irreversible or a public contract. Coding: changing a protocol, changing a schema, deleting an old path, publishing. Research/writing: safety-critical conclusions, independent review, cross-module architecture decisions.
-Hard rules: when unsure, score higher rather than lower (downgrading a route is allowed, upgrading it is not); the tier is a task property, not a member property, so the same member may hold tasks of different tiers; the tier maps straight onto route pools and cost, so inflating a tier burns money instead of buying insurance.
+Hard rules: the tier is a task property, not a member property; when unsure, score higher rather than lower.
 Tools: ${toolNames}${profilesText === '' ? '' : `\n\n${profilesText}`}`
 }
 
@@ -370,41 +371,24 @@ export function apply(ctx: Context, config: Config): void {
             ? payload['dependencies'].filter((item): item is string => typeof item === 'string')
             : []
           /**
-           * Task routing fields as edited by the **user** in the staged plan.
+           * Task presentation fields as edited by the **user** in the staged plan.
            *
-           * A `provider`/`model` pair sent from this surface is a *hard* route
-           * (`routeSource: 'user'`): it outranks the captain's preference and
-           * blocks approval when unavailable. When the payload mentions no route
-           * key at all the stored route is left untouched, and both keys empty
-           * clear it.
+           * 2026-10-10 去路由：任务不再有 provider/model/reasoning_effort，
+           * 难度与角色是纯展示属性。载荷里不再出现 route 键。
            */
-          const routeEdit = (): {
+          const presentationEdit = (): {
             difficulty?: string | null
             role?: string | null
-            route?: { provider: string; model: string; reasoning_effort: string } | null
-            routeSource?: 'user'
           } => {
             const edit: {
               difficulty?: string | null
               role?: string | null
-              route?: { provider: string; model: string; reasoning_effort: string } | null
-              routeSource?: 'user'
             } = {}
             if (typeof payload['difficulty'] === 'string' || payload['difficulty'] === null) {
               edit.difficulty = payload['difficulty'] as string | null
             }
             if (typeof payload['role'] === 'string' || payload['role'] === null) {
               edit.role = payload['role'] as string | null
-            }
-            const mentionsRoute = 'provider' in payload || 'model' in payload || 'reasoning_effort' in payload
-            if (mentionsRoute) {
-              const provider = typeof payload['provider'] === 'string' ? payload['provider'].trim() : ''
-              const model = typeof payload['model'] === 'string' ? payload['model'].trim() : ''
-              const reasoningEffort = typeof payload['reasoning_effort'] === 'string' ? payload['reasoning_effort'].trim() : ''
-              edit.route = provider === '' && model === ''
-                ? null
-                : { provider, model, reasoning_effort: reasoningEffort }
-              edit.routeSource = 'user'
             }
             return edit
           }
@@ -425,11 +409,8 @@ export function apply(ctx: Context, config: Config): void {
               ...typeof payload['executionPrompt'] === 'string' || payload['executionPrompt'] === null
                 ? { executionPrompt: payload['executionPrompt'] as string | null }
                 : {},
-              // A model chosen on this surface is a **pin** (`routeSource: 'user'`):
-              // it outranks the route derived from the member's tasks and blocks
-              // approval when unavailable, exactly like a task-row hard route. A
-              // payload that only edits the role or the prompt sends no
-              // `routeSource` at all, so it cannot create or drop a pin.
+              // 用户在这个面板上选的模型记为用户来源（`routeSource: 'user'`）；
+              // 只改角色或提示词的载荷不带 `routeSource`，因此不会创建或丢弃该标记。
               ...payload['routeSource'] === 'user' ? { routeSource: 'user' as const } : {},
               ...payload['routeSource'] === null ? { routeSource: null } : {},
             }
@@ -448,7 +429,7 @@ export function apply(ctx: Context, config: Config): void {
               ...typeof payload['assignee'] === 'string' || payload['assignee'] === null
                 ? { assignee: payload['assignee'] as string | null }
                 : {},
-              ...routeEdit(),
+              ...presentationEdit(),
             }
           } else if (action === 'add_task') {
             if (typeof payload['subject'] !== 'string') throw new Error('subject is required')
@@ -462,7 +443,7 @@ export function apply(ctx: Context, config: Config): void {
               ...typeof payload['assignee'] === 'string' || payload['assignee'] === null
                 ? { assignee: payload['assignee'] as string | null }
                 : {},
-              ...routeEdit(),
+              ...presentationEdit(),
             }
           } else if (action === 'remove_task') {
             if (typeof payload['taskId'] !== 'string') throw new Error('taskId is required')

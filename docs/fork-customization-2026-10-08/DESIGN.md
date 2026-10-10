@@ -370,3 +370,68 @@ export function agencyServicesOf(ctx: { get(key: never): unknown }) {
 6. **实现性修正**：A.2 的 agency 服务探测一律 `ctx.get()`（模块级 `inject` 是硬依赖，agency-agents 缺席会让本插件整体不激活，与"任一缺失整体回落"相反；照 `src/router.ts` 的 `valueRouterOf()` 模式）。
 7. **A 段缺省规格补齐**：slug 重名 `-2` 后缀+diagnostics；超 maxMembers 报错不截断；persona 截断上限 8000 字符；locale 客户端优先、缺省 zh；冲突矩阵 `agencyTeam`×`profile` / ×`plan.members` 报错、×`plan.tasks` 允许。
 8. **文档勘误**：0 段 D 行与实施顺序步 7 的「待定」过期文字更新；B 段补实际增量边界（难度徽章/routeStatus/routeSource 投影已存在）；D.6 注明纪律 1–3 无直接落点；C.3 验收拆为「单测（可自动化）+ 实跑抽查（captain 活环境）」。
+
+---
+
+## E · 去路由改造（2026-10-10，用户裁决）
+
+**本节取代前文所有关于「难度 → 模型线路」的表述。** A.2 第 6 条、C.2 的「档位映射线路池」、D.4 的 B 段审计落地，均随本次改造退役；B 段（路由决策可见）整体失去对象。
+
+### E.1 用户裁决（原话要点）
+
+1. **难度纯展示**——它就是「这个任务的难度」，不再参与任何模型路由或分档。
+2. **每个成员固定一个模型**，创建时冻结写入 `team.json`（沿用既有冻结语义，启动后不中途换模型）。
+3. **不再依赖 `dsh-value-router`**——用户选择直接**禁用该插件**（方案 B），而非仅在 AgentTeams 侧解除依赖。
+
+### E.2 为什么必须连 value-router 一起处理（实测证据）
+
+`dsh-value-router@0.10.x` 的 `lib/index.js`：
+
+- L706-708 注释声称「队友也是 subagent child，所以队友也会命中这里，但本 hook 只在普通 subagent 上生效」——**注释是意图，代码未实现**；
+- L1331 的实际判据只有 `isSubagentSession(header)` 即 `header.origin === 'subagent'`，**没有任何排除队友的条件**；
+- L720 `isExplicitCaptainRoute`：成员模型与父会话（队长）线路**相同**时判为「继承、未指定」，于是按 `DEFAULT_DIFFICULTY = medium` **改写**该成员的线路；不同时才判为显式并走 `noop`。
+
+**结论**：只改 AgentTeams 无法保证「每个成员固定模型」——与队长同模型的成员会被静默改写。这是选择方案 B 的直接原因。
+
+旁证（真实数据）：`D:\dsh-workspaces\dev\.agent-teams\background-run-upgrade-20261010\team.json` 的 10 名成员中，5 名带 `routeKey`（`planMemberSlots` 按难度自动铸造），另 5 名 `routeKey` 为空——那是当时为了换模型只能**再补一个新成员**（`migration-analyst-alt`、`plugin-engineer-sol` 等）留下的痕迹。
+
+另一条独立证据：desktop profile 的 `workbuddy/glm-5.3` 只声明了 `low`/`high`/`max` 三个 `reasoningEfforts`，而被派 `medium` effort 时宿主直接 400「模型不支持该思考强度」——这正是本轮工具层（auto-review 走 workbuddy）中断的报错。
+
+### E.3 改造内容
+
+**服务端**
+
+| 文件 | 改动 |
+| --- | --- |
+| `src/router.ts` | 整个 value-router 桥删除（服务键、`resolve()`、`coerceResolution`、审计事件）。只保留难度/角色校验与 `normalizeRole` |
+| `src/tools.ts` | 删 `revalidateTaskRoutes` / `planMemberSlots` / `revalidateMemberRoutes` / `applyMemberRoutePins` / `frozenRouteOf` / `nextSlotMemberName` / `taskRouteEditFrom` / `routeEditFromArguments` / `applyRouteEdit` / `RouteEdit`。新增 `applyTaskPresentationEdit` / `taskPresentationEditFrom`。`approveStagedTeam` 与两条 `initialize*Team` 只冻结成员线路并做目录校验 |
+| `src/scheduler.ts` | `routeBlocksDispatch` 守卫删除——不再有「线路未解析就不派发」 |
+| `src/state.ts` | 任务校验不再校验路线字段（旧 `team.json` 的残留键容忍并忽略）；`projectRouteAudit` / `projectTaskRouteActivity` **保留**为旧记录的只读投影 |
+| `src/types.ts` | 任务的路由字段标记 `@deprecated` 只读遗留字段；`TeamMember.routeKey` / `difficulty` / `normalizedRole` 删除 |
+| `src/profiles.ts`、`src/agency-bridge.ts` | 任务配置不再有 `provider`/`model`/`reasoning_effort` |
+| `src/index.ts` | `/plan` 的 `routeEdit()` 改为 `presentationEdit()`；提示词加中文语言约束 |
+
+**客户端**
+
+- `StagingPlanEditor.tsx`：**任务卡片去掉模型选择器**（`StagedModelPicker` 只留在成员卡片上，成员选型升为唯一主交互面）；新增 `plan.task.difficultyHint` 说明难度不影响模型。
+- `RouteDetails.tsx`：`MemberRouteKey` 组件删除；审计 popover 保留为**旧团队只读历史**（新任务不产生审计，故对新团队不渲染）。
+- `route-details-model.ts`：`memberRouteKeyParts` 删除，`routeLine` 保留供遗留审计展示。
+- `locales.ts`：`plan.task.routeHint` / `plan.task.routeClear` 删除；`plan.members.title` 改为「成员与模型」。
+
+### E.4 中文语言约束（用户裁决的另一半）
+
+现象：面板 UI 是中文，但**喂给模型的每一段自然语言提示词都是英文**（`usageSectionText` 的队长协议、工具参数 description、`memberPersona`、`assignmentPrompt`、`TEAM_ACTIVATION_PROMPT`），所以模型起英文队名、写英文任务名。
+
+用户裁决：**只加语言约束，不改写既有英文提示词**（改动最小、回归风险最低）。落点：
+
+- `usageSectionText()` 新增 `Language rule (mandatory)` 段：团队名、成员名、任务 subject/description/role、计划摘要一律用用户当前对话语言；工具名/id/provider/model/路径/代码标识符保留原文；
+- `agent_teams_create` 的 `name`/`description`、`plan.members[].name`/`role`、`plan.tasks[].subject`/`description`、`add_member.name`、`create_task.subject` 等参数 description 补中文要求；
+- 难度评分卡与 `TASK_ROUTE_PARAMETERS.difficulty` 的描述改写为「纯展示属性，不参与模型选择」。
+
+### E.5 验收
+
+- `pnpm typecheck`（host + client 两份 tsconfig）全绿；
+- `pnpm build` 重建 `lib/`（含 client bundle）；
+- `node scripts/verify.mjs` 全绿（8 套）；
+- 路由相关的 7 个回归脚本按 `expected-retirement` 处理：断言退役行为的用例删除或改写为新契约（详见各测试文件头部注释）；
+- 活体验收：宿主 `valueRouterRouting` 服务从 Cordis 目录消失（`cordis_inspect_query` 查 `Service` 已无此键），即 value-router 不再接管任何会话。
