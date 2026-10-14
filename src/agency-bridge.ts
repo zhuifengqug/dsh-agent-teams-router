@@ -68,6 +68,8 @@ export interface AgencyTeam {
 export interface AgencyExpert {
   slug?: string
   division?: string
+  /** 简短描述，供队长在 agent_teams_experts 里判断该挂谁。 */
+  description?: string
 }
 
 /** `agencyAgentsTeams` 的最小可用方法集（真实形状：异步 `snapshot` + 异步 `get`）。 */
@@ -255,7 +257,11 @@ function readExpert(value: unknown): AgencyExpert | undefined {
   const row = value as Record<string, unknown>
   const slug = text(row['slug'])
   if (slug === '') return undefined
-  return { slug, ...optionalText(row['division']) === undefined ? {} : { division: optionalText(row['division']) } }
+  return {
+    slug,
+    ...optionalText(row['division']) === undefined ? {} : { division: optionalText(row['division']) },
+    ...optionalText(row['description']) === undefined ? {} : { description: optionalText(row['description']) },
+  }
 }
 
 /**
@@ -285,6 +291,15 @@ function readPersonaText(value: unknown): string | undefined {
     return optionalText((value as Record<string, unknown>)['prompt'])
   }
   return undefined
+}
+
+/** catalog 的真实形状：专家数组加顶层 enabled slug 列表。 */
+function coerceCatalog(value: unknown): { experts: AgencyExpert[]; enabled: string[] } | undefined {
+  const experts = coerceExperts(value)
+  if (experts === undefined || typeof value !== 'object' || value === null) return undefined
+  const enabled = (value as Record<string, unknown>)['enabled']
+  if (!Array.isArray(enabled) || !enabled.every(item => typeof item === 'string')) return undefined
+  return { experts, enabled }
 }
 
 /** 把服务返回收敛成 expert 数组；形状不认识返回 undefined（= catalog 不可用）。 */
@@ -529,6 +544,56 @@ export function resolveAgencyCreateRequest(args: {
  * 服务缺席返回 `available:false`，调用方据此拒绝 `agencyTeam` 参数并给出原因；
  * 其余失败（team 不存在 / 阵容超 maxMembers）返回可读英文 error。
  */
+/**
+ * 列出用户已启用的专家（只读，不建团、不读 persona 正文）。
+ *
+ * 队长据此自己挑人——不需要用户点名。catalog 不可用时返回空数组而不是抛错，
+ * 调用方据 `available` 决定是否提示用户。
+ */
+export async function listEnabledExperts(ctx: { get(key: never): unknown } | undefined): Promise<
+  | { available: false; reason: string }
+  | { available: true; experts: Array<{ slug: string; division: string; description: string }> }
+> {
+  const outcome = agencyServicesOf(ctx)
+  if (!outcome.available) return { available: false, reason: agencyUnavailableReason(outcome) }
+  const catalog = coerceCatalog(await readMaybeAsync(outcome.services.library.catalog))
+  if (catalog === undefined) return { available: false, reason: 'the agency catalog is unavailable' }
+  const enabled = new Set(catalog.enabled)
+  return {
+    available: true,
+    experts: catalog.experts
+      .filter((expert): expert is AgencyExpert & { slug: string } => expert.slug !== undefined && enabled.has(expert.slug))
+      .map(expert => ({ slug: expert.slug, division: expert.division ?? '', description: expert.description ?? '' })),
+  }
+}
+
+/**
+ * 给**一个**队员取专家 persona。未启用或不存在都拒绝，不静默当普通队员。
+ *
+ * 这是「建队员时按需挂专家」的唯一入口：阵容不是必须整团替换，队员有无专家各自独立。
+ */
+export async function resolveExpertPersona(input: {
+  ctx: { get(key: never): unknown } | undefined
+  slug: string
+  locale: string
+}): Promise<{ ok: true; slug: string; executionPrompt: string } | { ok: false; error: string }> {
+  const slug = text(input.slug)
+  if (slug === '') return { ok: false, error: 'expert slug must not be empty' }
+  const outcome = agencyServicesOf(input.ctx)
+  if (!outcome.available) return { ok: false, error: agencyUnavailableReason(outcome) }
+  const catalog = coerceCatalog(await readMaybeAsync(outcome.services.library.catalog))
+  if (catalog === undefined) return { ok: false, error: 'the agency catalog is unavailable' }
+  const expert = catalog.experts.find(candidate => candidate.slug === slug)
+  if (expert === undefined) return { ok: false, error: `expert "${slug}" is not in the agency catalog` }
+  if (!new Set(catalog.enabled).has(slug)) {
+    return { ok: false, error: `expert "${slug}" is not enabled; enable it in Agency settings or pick another` }
+  }
+  const locale = text(input.locale) === '' ? DEFAULT_LOCALE : text(input.locale)
+  const persona = readPersonaText(await readMaybeAsync(outcome.services.persona.getPrompt, slug, expert.division ?? '', locale))
+  if (persona === undefined) return { ok: false, error: `no persona text for expert "${slug}"` }
+  return { ok: true, slug, executionPrompt: persona.slice(0, PERSONA_MAX_CHARS) }
+}
+
 export async function loadAgencyTeam(input: {
   ctx: { get(key: never): unknown } | undefined
   idOrName: string

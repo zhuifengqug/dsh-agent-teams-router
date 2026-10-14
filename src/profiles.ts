@@ -21,7 +21,7 @@ export const PROFILE_PROTOCOL_PROMPT_LIMIT = 240
 
 const PROFILE_KEYS = ['description', 'protocol', 'executionPrompt', 'fallback', 'members', 'tasks', 'taskPlanning', 'reviewPolicy'] as const
 const REVIEW_POLICY_KEYS = ['requirementsMinRounds', 'requirementsMaxRounds', 'codeMaxRounds', 'maxRepairAttempts', 'requiredReviewers'] as const
-const MEMBER_KEYS = ['name', 'role', 'provider', 'model', 'reasoning_effort', 'executionPrompt', 'fallback'] as const
+const MEMBER_KEYS = ['name', 'role', 'provider', 'model', 'reasoning_effort', 'executionPrompt', 'expert', 'fallback'] as const
 const FALLBACK_KEYS = ['provider', 'model'] as const
 const TASK_KEYS = ['id', 'subject', 'description', 'assignee', 'dependencies', 'difficulty', 'role'] as const
 
@@ -38,6 +38,8 @@ export interface TeamProfileMemberConfig {
   model?: string
   reasoning_effort?: string
   executionPrompt?: string
+  /** Optional agency expert slug; its persona is composed in front of `executionPrompt`. */
+  expert?: string
   fallback?: TeamModelFallbackConfig
 }
 
@@ -78,6 +80,7 @@ export interface NormalizedProfileMember {
   model?: string
   reasoningEffort?: string
   executionPrompt?: string
+  expert?: string
   fallback?: TeamModelFallbackConfig
 }
 
@@ -470,11 +473,12 @@ function normalizeMember(
   const model = optionalNonEmptyString(raw['model'], `${path}.model`)
   const reasoningEffort = optionalNonEmptyString(raw['reasoning_effort'], `${path}.reasoning_effort`)
   const executionPrompt = optionalNonEmptyString(raw['executionPrompt'], `${path}.executionPrompt`)
+  const expert = optionalNonEmptyString(raw['expert'], `${path}.expert`)
   const fallback = normalizeFallback(raw['fallback'], `${path}.fallback`)
   if (provider !== undefined && model === undefined) {
     throw new Error(`profile member "${name}" sets provider without model`)
   }
-  return omitUndefined({ name, role, provider, model, reasoningEffort, executionPrompt, fallback })
+  return omitUndefined({ name, role, provider, model, reasoningEffort, executionPrompt, expert, fallback })
 }
 
 function normalizeFallback(value: unknown, path: string): TeamModelFallbackConfig | undefined {

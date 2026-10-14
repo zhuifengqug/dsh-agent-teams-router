@@ -58,6 +58,8 @@ export interface AgencyTeam {
 export interface AgencyExpert {
     slug?: string;
     division?: string;
+    /** 简短描述，供队长在 agent_teams_experts 里判断该挂谁。 */
+    description?: string;
 }
 /** `agencyAgentsTeams` 的最小可用方法集（真实形状：异步 `snapshot` + 异步 `get`）。 */
 export interface AgencyTeamsServiceLike {
@@ -229,6 +231,44 @@ export declare function resolveAgencyCreateRequest(args: {
  * 服务缺席返回 `available:false`，调用方据此拒绝 `agencyTeam` 参数并给出原因；
  * 其余失败（team 不存在 / 阵容超 maxMembers）返回可读英文 error。
  */
+/**
+ * 列出用户已启用的专家（只读，不建团、不读 persona 正文）。
+ *
+ * 队长据此自己挑人——不需要用户点名。catalog 不可用时返回空数组而不是抛错，
+ * 调用方据 `available` 决定是否提示用户。
+ */
+export declare function listEnabledExperts(ctx: {
+    get(key: never): unknown;
+} | undefined): Promise<{
+    available: false;
+    reason: string;
+} | {
+    available: true;
+    experts: Array<{
+        slug: string;
+        division: string;
+        description: string;
+    }>;
+}>;
+/**
+ * 给**一个**队员取专家 persona。未启用或不存在都拒绝，不静默当普通队员。
+ *
+ * 这是「建队员时按需挂专家」的唯一入口：阵容不是必须整团替换，队员有无专家各自独立。
+ */
+export declare function resolveExpertPersona(input: {
+    ctx: {
+        get(key: never): unknown;
+    } | undefined;
+    slug: string;
+    locale: string;
+}): Promise<{
+    ok: true;
+    slug: string;
+    executionPrompt: string;
+} | {
+    ok: false;
+    error: string;
+}>;
 export declare function loadAgencyTeam(input: {
     ctx: {
         get(key: never): unknown;

@@ -83,9 +83,11 @@ import { resolveTeamProfile } from './profiles.ts'
 import {
   DEFAULT_LOCALE,
   clientLocaleOf,
+  listEnabledExperts,
   loadAgencyTeam,
   normalizeAgencyPlanTasks,
   resolveAgencyCreateRequest,
+  resolveExpertPersona,
   type AgencyAssemblyResult,
   type AgencyPlanTaskRow,
 } from './agency-bridge.ts'
@@ -858,7 +860,7 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
       name: { type: 'string', required: true, description: 'Team name (used as its stable id). Write it in the user\'s current conversation language.' },
       description: { type: 'string', description: 'Team purpose / the goal the team will work on. Write it in the user\'s current conversation language.' },
       profile: { type: 'string', description: 'Optional configured profile name.' },
-      agencyTeam: { type: 'string', description: 'Optional agency-agents team id or name. Supplies the whole roster (persona + duty + instructions per expert, member names are expert slugs, and provider/model stay empty until the user picks each member\'s model in the plan panel). Requires the agency-agents plugin; mutually exclusive with profile and with plan.members, allowed with plan.tasks. Rejected with a reason when the bridge is unavailable.' },
+      agencyTeam: { type: 'string', description: 'Optional agency-agents team id or name. Supplies the whole roster (persona + duty + instructions per expert, member names are expert slugs, and provider/model stay empty until the user picks each member\'s model in the plan panel). Requires the agency-agents plugin; mutually exclusive with profile and with plan.members, allowed with plan.tasks. Rejected with a reason when the bridge is unavailable. For a single expert on one member use the member\'s expert field instead — the roster does not have to be a whole agency team.' },
       plan: {
         type: 'object', additionalProperties: false,
         description: 'Optional complete ordinary-work roster and DAG in one atomic call, instead of separate add_member/create_task rounds. Mutually exclusive with profile. For quality gates use create_task with the explicit quality contract.',
@@ -867,6 +869,7 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
             name: { type: 'string', required: true, description: 'Member display name. Write it in the user\'s current conversation language.' },
             role: { type: 'string', description: 'Member role. Write it in the user\'s current conversation language.' },
             provider: { type: 'string' }, model: { type: 'string' }, reasoning_effort: { type: 'string' },
+            expert: { type: 'string', description: 'Optional agency expert slug for this member only; pick from agent_teams_experts when the work needs a specialist. Leave it out for ordinary members.' },
           } } },
           tasks: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
             id: { type: 'string', required: true, description: 'Local reference used by dependencies in this plan; the result maps it to a durable task id.' },
@@ -947,13 +950,15 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
       if (profileName !== undefined && args.plan !== undefined) throw new Error('choose either a configured profile or an inline plan')
       // Resolve before taking any lock: nothing is written when the bridge is
       // unavailable or the team cannot be assembled.
+      const agencyCtx = ctx as unknown as { get(key: never): unknown }
+      const agencyLocale = clientLocaleOf(ctx) ?? DEFAULT_LOCALE
       const agency = agencyTeamRef === undefined
         ? undefined
         : await loadAgencyTeam({
-          ctx: ctx as unknown as { get(key: never): unknown },
+          ctx: agencyCtx,
           idOrName: agencyTeamRef,
           maxMembers: config.maxMembers,
-          locale: clientLocaleOf(ctx) ?? DEFAULT_LOCALE,
+          locale: agencyLocale,
         })
       if (agency !== undefined && !agency.ok) throw new Error(agency.reason)
       const agencyAssembly: AgencyAssemblyResult | undefined = agency?.ok === true ? agency.assembly : undefined
@@ -1291,6 +1296,7 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
       model: { type: 'string', description: 'Optional model override. Omit for the captain\'s current model (or the configured memberModel default).' },
       reasoning_effort: { type: 'string', description: 'Optional reasoning effort override: one of the target model\'s supported effort ids, or "default" to force its default. When omitted, the captain\'s effort is inherited only for the same provider/model; a changed route uses the target default.' },
       executionPrompt: { type: 'string', description: 'Optional member-specific execution prompt. It remains editable while staged.' },
+      expert: { type: 'string', description: 'Optional agency expert slug for THIS member only. When the task needs a specialist, pick one from agent_teams_experts and pass its slug: the member gets that expert\'s persona. Only enabled experts are accepted; an unknown or disabled slug fails the call. Omit for an ordinary member — a team does not have to be an agency team, and only some members need an expert.' },
     },
     output: {
       schema: {
@@ -1304,13 +1310,18 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
           reasoning_effort: { type: 'string' },
           status: { type: 'string', required: true },
           phase: { type: 'string', required: true },
+          reused: { type: 'boolean' },
+          expert: { type: 'string' },
         },
       },
       render: (args, value) => [{
         type: 'text',
-        text: value.phase === 'staged'
+        text: (value.reused === true
+          ? `Member "${value.member_name}" already exists (${value.provider}/${value.model}, status ${value.status}); no new session was started.`
+          : value.phase === 'staged'
           ? `Member "${value.member_name}" added to the staged roster (${value.provider}/${value.model}); no child was spawned.`
-          : `Member "${value.member_name}" added (session ${value.member_id || 'starts with first ready task'}, ${value.provider}/${value.model}${value.reasoning_effort === undefined ? '' : `, reasoning ${value.reasoning_effort}`}, status ${value.status}).`,
+          : `Member "${value.member_name}" added (session ${value.member_id || 'starts with first ready task'}, ${value.provider}/${value.model}${value.reasoning_effort === undefined ? '' : `, reasoning ${value.reasoning_effort}`}, status ${value.status}).`)
+          + (value.expert === undefined ? '' : ` Expert persona: ${value.expert}.`),
       }],
     },
     async execute(args, exec) {
@@ -1326,8 +1337,22 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
         if (memberKey === CAPTAIN_KEY) {
           throw new Error(`member name "${args.name}" is reserved for the captain`)
         }
-        if (fresh.members.some((candidate) => sanitizeKey(candidate.name) === memberKey)) {
-          throw new Error(`member name "${args.name}" has already been used in team "${fresh.name}"`)
+        const existing = fresh.members.find((candidate) => sanitizeKey(candidate.name) === memberKey)
+        if (existing !== undefined) {
+          if (existing.status === 'removed') {
+            throw new Error(`member name "${args.name}" belongs to a removed member in team "${fresh.name}"`)
+          }
+          return {
+            member_name: existing.name,
+            member_id: existing.id,
+            provider: existing.provider ?? '',
+            model: existing.model ?? '',
+            ...existing.reasoningEffort === undefined ? {} : { reasoning_effort: existing.reasoningEffort },
+            status: existing.status,
+            phase: fresh.phase ?? 'running',
+            reused: true,
+            ...existing.expert === undefined ? {} : { expert: existing.expert },
+          }
         }
         if (fresh.members.filter((candidate) => candidate.status !== 'removed').length >= config.maxMembers) {
           throw new Error(`team "${fresh.name}" is at its member cap (${config.maxMembers})`)
@@ -1339,6 +1364,16 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
           reasoningEffort: args.reasoning_effort,
           fallback: config.fallback,
         }, exec.signal)
+        // 队员级专家：只在传了 expert 时才去取 persona；取不到就报错，
+        // 不静默当普通队员——否则队长会以为挂了专家。
+        const expertPrompt = args.expert === undefined || args.expert.trim() === ''
+          ? undefined
+          : await resolveExpertPersona({
+            ctx: ctx as unknown as { get(key: never): unknown },
+            slug: args.expert,
+            locale: clientLocaleOf(ctx) ?? DEFAULT_LOCALE,
+          })
+        if (expertPrompt !== undefined && !expertPrompt.ok) throw new Error(expertPrompt.error)
         const member: TeamMember = {
           id: '',
           name: memberName,
@@ -1347,7 +1382,12 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
           model: selection.model,
           reasoningEffort: selection.reasoningEffort,
           ...selection.fallback === undefined ? {} : { fallback: selection.fallback },
-          executionPrompt: trimmedOptional(args.executionPrompt),
+          ...expertPrompt === undefined ? {} : { expert: expertPrompt.slug },
+          executionPrompt: expertPrompt === undefined
+            ? trimmedOptional(args.executionPrompt)
+            : [expertPrompt.executionPrompt, trimmedOptional(args.executionPrompt) ?? '']
+              .filter(part => part !== '')
+              .join('\n\n'),
           joinedAt: Date.now(),
           status: 'idle',
         }
@@ -1363,13 +1403,15 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
         return {
           member_name: member.name,
           member_id: member.id,
-          provider: selection.provider,
-          model: selection.model,
+          provider: selection.provider ?? '',
+          model: selection.model ?? '',
           ...selection.reasoningEffort === undefined
             ? {}
             : { reasoning_effort: selection.reasoningEffort },
           status: member.status,
           phase: fresh.phase ?? 'running',
+          reused: false,
+          ...member.expert === undefined ? {} : { expert: member.expert },
         }
       })
       await scheduler.kickMember(workspace, team.id, created.member_name, captain)
@@ -2264,6 +2306,41 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
   }))
 
   ctx.tools.register(defineTool({
+    name: 'agent_teams_experts',
+    description: 'List the agency experts the user has enabled, with slug, division and a short description. Read-only: it does not create a team or read any persona text. Call it when a task needs a specialist, pick the best-matching slug yourself, then pass that slug as the expert field of agent_teams_add_member or a plan member row. The user does not have to name an expert. Omit expert for ordinary members — only the members that need a specialist carry one.',
+    parameters: {},
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          available: { type: 'boolean', required: true },
+          reason: { type: 'string' },
+          experts: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
+            slug: { type: 'string', required: true },
+            division: { type: 'string', required: true },
+            description: { type: 'string', required: true },
+          } } },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: value.available !== true
+          ? `Agency experts are unavailable: ${value.reason ?? 'unknown reason'}. Create the team with ordinary members instead.`
+          : value.experts.length === 0
+            ? 'The user has no enabled agency experts. Create the team with ordinary members instead.'
+            : value.experts.map(expert => `${expert.slug} [${expert.division}] ${expert.description}`).join('\n'),
+      }],
+    },
+    async execute() {
+      const listed = await listEnabledExperts(ctx as unknown as { get(key: never): unknown })
+      return listed.available
+        ? { available: true, experts: listed.experts }
+        : { available: false, reason: listed.reason, experts: [] }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
     name: 'agent_teams_status',
     description: 'Team snapshot: members with live activity and tasks with status/assignee/dependencies/output. Captains also see every team mailbox; members see only their own inbox. Use after mailbox progress deliveries or for an explicit status request. After dispatch, end your turn while members work; do not repeatedly poll.',
     parameters: {},
@@ -2292,6 +2369,7 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
           provider: member.provider ?? '',
           model: member.model ?? '',
           reasoning_effort: member.reasoningEffort ?? '',
+          ...member.expert === undefined ? {} : { expert: member.expert },
           status: member.status,
           activity: member.id !== '' ? (activity.get(member.id) ?? 'unknown') : 'unspawned',
           ...member.spawnError === undefined ? {} : { spawn_error: member.spawnError },
@@ -2526,6 +2604,18 @@ async function initializeProfileTeam(input: {
   const profile = resolveTeamProfile(input.inlinePlan === undefined ? input.config.profiles : { [input.profileName]: input.inlinePlan }, input.profileName, input.config.maxMembers)
   const now = Date.now()
   const seedToActual = new Map(profile.tasks.map((template, index) => [template.id, `t${index + 1}`] as const))
+  // 队员级专家：只为声明了 expert 的行取 persona，取不到直接报错（不静默降级成普通队员）。
+  const expertPrompts = new Map<string, string>()
+  for (const template of profile.members) {
+    if (template.expert === undefined) continue
+    const resolved = await resolveExpertPersona({
+      ctx: input.ctx as unknown as { get(key: never): unknown },
+      slug: template.expert,
+      locale: clientLocaleOf(input.ctx) ?? DEFAULT_LOCALE,
+    })
+    if (!resolved.ok) throw new Error(`member "${template.name}": ${resolved.error}`)
+    expertPrompts.set(template.name, resolved.executionPrompt)
+  }
   const draft: TeamState = {
     name: input.teamName,
     id: input.teamId,
@@ -2550,7 +2640,11 @@ async function initializeProfileTeam(input: {
       provider: template.provider,
       model: template.model,
       reasoningEffort: template.reasoningEffort,
-      executionPrompt: template.executionPrompt ?? profile.executionPrompt ?? input.config.executionPrompt,
+      ...template.expert === undefined ? {} : { expert: template.expert },
+      executionPrompt: [
+        expertPrompts.get(template.name) ?? '',
+        template.executionPrompt ?? profile.executionPrompt ?? input.config.executionPrompt ?? '',
+      ].filter(part => part !== '').join('\n\n') || undefined,
       ...template.fallback ?? profile.fallback ?? input.config.fallback === undefined
         ? {}
         : { fallback: template.fallback ?? profile.fallback ?? input.config.fallback },

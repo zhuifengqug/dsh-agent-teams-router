@@ -27,6 +27,8 @@ export interface TeamProfileMemberConfig {
     model?: string;
     reasoning_effort?: string;
     executionPrompt?: string;
+    /** Optional agency expert slug; its persona is composed in front of `executionPrompt`. */
+    expert?: string;
     fallback?: TeamModelFallbackConfig;
 }
 /** One seed-task row in a named team-profile template (unresolved). */
@@ -64,6 +66,7 @@ export interface NormalizedProfileMember {
     model?: string;
     reasoningEffort?: string;
     executionPrompt?: string;
+    expert?: string;
     fallback?: TeamModelFallbackConfig;
 }
 /** A profile seed task after assignee canonicalization; `sourceIndex` is the YAML order. */

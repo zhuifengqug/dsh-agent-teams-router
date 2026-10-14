@@ -235,6 +235,14 @@ export interface TeamMember {
     reasoningEffort?: string;
     /** Prompt specific to this member's execution turns. */
     executionPrompt?: string;
+    /**
+     * agency-agents expert slug whose persona was composed into `executionPrompt`.
+     *
+     * Optional and per-member: a team does not have to be an agency team, and only
+     * the members that need a specialist carry one. Recorded so `agent_teams_status`
+     * and the plan panel can show which persona a member actually runs.
+     */
+    expert?: string;
     /** Configured second-choice route. */
     fallback?: TeamModelFallback;
     /** Active route after fallback, without changing the primary descriptor route. */

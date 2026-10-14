@@ -40,10 +40,12 @@ import {
   assembleAgencyTeam,
   clientLocaleOf,
   composeExecutionPrompt,
+  listEnabledExperts,
   loadAgencyTeam,
   normalizeAgencyPlanTasks,
   resolveAgencyCreateRequest,
   resolveAgencyTeam,
+  resolveExpertPersona,
 } from '../lib/agency-bridge.js'
 import { usageSectionText } from '../lib/index.js'
 import { registerAgentTeamsTools } from '../lib/tools.js'
@@ -73,7 +75,7 @@ function makeServices(options = {}) {
       return team
     },
   }
-  const libraryService = { catalog: async () => { calls.catalog += 1; return { experts, enabled: [], revision: 1 } } }
+  const libraryService = { catalog: async () => { calls.catalog += 1; return { experts, enabled: options.enabled ?? [], revision: 1 } } }
   const personaService = {
     getPrompt: async (slug, division, locale) => {
       calls.getPrompt.push({ slug, division, locale })
@@ -543,4 +545,59 @@ test('回归：两条创建路径共用同一个「解析成员线路 → 校验
       assert.equal(body.includes(retired), false, `${label}: retired route symbol ${retired} must be gone`)
     }
   }
+})
+
+test('队员级专家：只读清单只列已启用项，服务缺席时给出原因而不是抛错', async () => {
+  // 队长要靠这份清单自己挑人（用户不必点名），所以它必须是只读、无副作用、
+  // 且在没有 agency-agents 时安静回落。
+  const { services } = makeServices({
+    experts: DEMO_EXPERTS,
+    enabled: ['data-analyst'],
+    personas: { 'data-analyst': 'You read funnels.' },
+  })
+  const listed = await listEnabledExperts(ctxWith(services))
+  assert.equal(listed.available, true)
+  assert.deepEqual(listed.experts.map((expert) => expert.slug), ['data-analyst'], '只列已启用')
+
+  const absent = await listEnabledExperts(ctxWith({}))
+  assert.equal(absent.available, false)
+  assert.match(absent.reason, /not registered/)
+
+  const noCtx = await listEnabledExperts(undefined)
+  assert.equal(noCtx.available, false)
+})
+
+test('队员级专家：单个队员按需挂 persona，未启用/不存在/缺正文都明确拒绝', async () => {
+  // 「有适配的就用」——挂专家是队员级可选项，不是整团替换。
+  const { services, calls } = makeServices({
+    experts: DEMO_EXPERTS,
+    enabled: ['growth-hacker', 'data-analyst'],
+    personas: { 'growth-hacker': 'You run growth experiments.' },
+  })
+  const ctx = ctxWith(services)
+
+  const ok = await resolveExpertPersona({ ctx, slug: 'growth-hacker', locale: DEFAULT_LOCALE })
+  assert.equal(ok.ok, true)
+  assert.equal(ok.slug, 'growth-hacker')
+  assert.equal(ok.executionPrompt, 'You run growth experiments.')
+  assert.deepEqual(calls.getPrompt, [{ slug: 'growth-hacker', division: 'marketing', locale: 'zh' }], 'division 必须按 catalog 传对')
+
+  const unknown = await resolveExpertPersona({ ctx, slug: 'nobody', locale: DEFAULT_LOCALE })
+  assert.equal(unknown.ok, false)
+  assert.match(unknown.error, /not in the agency catalog/)
+
+  const { services: partiallyEnabled } = makeServices({ experts: DEMO_EXPERTS, enabled: ['data-analyst'] })
+  const disabled = await resolveExpertPersona({ ctx: ctxWith(partiallyEnabled), slug: 'growth-hacker', locale: DEFAULT_LOCALE })
+  assert.equal(disabled.ok, false)
+  assert.match(disabled.error, /not enabled/)
+
+  const noPersona = await resolveExpertPersona({ ctx, slug: 'data-analyst', locale: DEFAULT_LOCALE })
+  assert.equal(noPersona.ok, false)
+  assert.match(noPersona.error, /no persona text/)
+
+  const empty = await resolveExpertPersona({ ctx, slug: '   ', locale: DEFAULT_LOCALE })
+  assert.equal(empty.ok, false)
+
+  const unavailable = await resolveExpertPersona({ ctx: undefined, slug: 'growth-hacker', locale: DEFAULT_LOCALE })
+  assert.equal(unavailable.ok, false)
 })
