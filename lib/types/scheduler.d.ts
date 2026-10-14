@@ -18,6 +18,27 @@ import type { TeamTask } from './types.ts';
 export declare const DEPENDENCY_OUTPUT_MAX_CHARS = 2000;
 /** Combined dependency-output budget in the assignment prompt. */
 export declare const DEPENDENCY_OUTPUTS_TOTAL_MAX_CHARS = 12000;
+/**
+ * Sliding no-progress window before a stalled capability may be recovered.
+ *
+ * This is a *progress* window, not a deadline: any observed progress (a running
+ * edge, a fresh dispatch, a member that settles its own attempt) resets it, so a
+ * legitimately long turn is never rotated by elapsed time alone. The window only
+ * starts once the member has stopped being observed as running.
+ */
+export declare const NO_PROGRESS_WINDOW_MS = 120000;
+/** Automatic recoveries allowed per task generation; beyond this only a captain rotates it. */
+export declare const MAX_AUTO_RECOVERIES = 2;
+/**
+ * How often the sliding window is re-evaluated.
+ *
+ * Every scheduler decision is event-driven, but a stall produces no event: the
+ * member already went quiet. Without a sweep the window could only ever be
+ * checked during unrelated activity, so a wedged task might wait indefinitely.
+ * The sweep is bounded (one sweep for the whole team) and only ever frees a
+ * stalled capability; the normal dispatch path does the actual work.
+ */
+export declare const NO_PROGRESS_SWEEP_MS = 30000;
 export interface SchedulerConfig {
     readonly stateDir: string;
     readonly executionPrompt?: string;

@@ -39,6 +39,27 @@ import type { TeamMember, TeamState, TeamTask } from './types.ts'
 export const DEPENDENCY_OUTPUT_MAX_CHARS = 2_000
 /** Combined dependency-output budget in the assignment prompt. */
 export const DEPENDENCY_OUTPUTS_TOTAL_MAX_CHARS = 12_000
+/**
+ * Sliding no-progress window before a stalled capability may be recovered.
+ *
+ * This is a *progress* window, not a deadline: any observed progress (a running
+ * edge, a fresh dispatch, a member that settles its own attempt) resets it, so a
+ * legitimately long turn is never rotated by elapsed time alone. The window only
+ * starts once the member has stopped being observed as running.
+ */
+export const NO_PROGRESS_WINDOW_MS = 120_000
+/** Automatic recoveries allowed per task generation; beyond this only a captain rotates it. */
+export const MAX_AUTO_RECOVERIES = 2
+/**
+ * How often the sliding window is re-evaluated.
+ *
+ * Every scheduler decision is event-driven, but a stall produces no event: the
+ * member already went quiet. Without a sweep the window could only ever be
+ * checked during unrelated activity, so a wedged task might wait indefinitely.
+ * The sweep is bounded (one sweep for the whole team) and only ever frees a
+ * stalled capability; the normal dispatch path does the actual work.
+ */
+export const NO_PROGRESS_SWEEP_MS = 30_000
 
 export interface SchedulerConfig {
   readonly stateDir: string
@@ -196,10 +217,34 @@ function ownedOpenTask(tasks: readonly TeamTask[], memberName: string): TeamTask
     && (task.status === 'claimed' || task.status === 'in_progress'))
 }
 
-export function nextReadyTask(tasks: readonly TeamTask[], memberName: string): TeamTask | undefined {
-  const ready = tasks.filter(task => task.status === 'pending'
+function runnableTasks(tasks: readonly TeamTask[]): TeamTask[] {
+  return tasks.filter(task => task.status === 'pending'
     && task.reassigning !== true
     && unsatisfiedDependencies([...tasks], task.dependencies).length === 0)
+}
+
+/**
+ * Whether a stalled member's open attempt should be recovered automatically.
+ *
+ * Recovery is *progress*-driven and bounded:
+ * - the member must not be observed as running any more (a live running member
+ *   is never rotated, however long its turn takes);
+ * - the same generation must have stayed stalled for the whole sliding window;
+ * - this generation may absorb at most {@link MAX_AUTO_RECOVERIES} automatic
+ *   recoveries, after which rotation is a captain decision.
+ */
+function shouldRecoverStalled(
+  state: { taskId: string; attemptId: string; since: number; recoveries: number } | undefined,
+  attemptId: string,
+  now: number,
+): boolean {
+  if (state === undefined || state.attemptId !== attemptId) return false
+  if (state.recoveries >= MAX_AUTO_RECOVERIES) return false
+  return now - state.since >= NO_PROGRESS_WINDOW_MS
+}
+
+export function nextReadyTask(tasks: readonly TeamTask[], memberName: string): TeamTask | undefined {
+  const ready = runnableTasks(tasks)
   return ready.find(task => task.assignee === memberName)
     ?? ready.find(task => task.assignee === undefined)
 }
@@ -265,6 +310,14 @@ export function installTeamScheduler(ctx: Context, config: SchedulerConfig): Tea
   // graph kicks must keep it parked. A cold process starts with an empty map,
   // so durable open attempts are still recovered after restart.
   const parkedAttempts = new Map<string, string>()
+  // Sliding no-progress tracking per member: which task generation is stalled,
+  // since when (reset by any progress) and how many automatic recoveries this
+  // task already spent. Bounded, so a wedged member cannot loop forever.
+  const noProgress = new Map<string, { taskId: string; attemptId: string; since: number; recoveries: number }>()
+  // Workspaces this scheduler has already dispatched for. The sweep needs them
+  // because the durable team record does not carry its workspace path; an
+  // unknown workspace simply produces no teams to sweep.
+  const seenTeams = new Map<string, { workspace: string; teamId: string }>()
 
   const memberQueueKey = (stateRoot: string, teamId: string, memberName: string): string => (
     `${stateRoot}\u0000${teamId}\u0000${memberName}`
@@ -292,6 +345,8 @@ export function installTeamScheduler(ctx: Context, config: SchedulerConfig): Tea
       if (team === undefined || team.halted === true || team.phase === 'staged') return
       const captain = liveCaptain(ctx, team.captainSessionId, suppliedCaptain)
       if (captain === undefined) return
+      // Remember where this team lives so the stall sweep can reach it later.
+      seenTeams.set(`${stateRoot}\u0000${teamId}`, { workspace, teamId })
       for (const member of team.members) {
         if (member.status === 'removed') continue
         await runtime.kickMember(workspace, teamId, member.name, captain)
@@ -301,13 +356,47 @@ export function installTeamScheduler(ctx: Context, config: SchedulerConfig): Tea
     async kickMember(workspace, teamId, memberName, suppliedCaptain) {
       const stateRoot = stateRootOf(workspace, config)
       const queueKey = memberQueueKey(stateRoot, teamId, memberName)
+      // Register even on a member-only kick: the sweep must be able to revisit
+      // this team after its last explicit event.
+      seenTeams.set(`${stateRoot}\u0000${teamId}`, { workspace, teamId })
       await serializeMember(queueKey, async () => {
         let team = await readTeam(stateRoot, teamId)
         if (team === undefined || team.halted === true || team.phase === 'staged') return
         const captain = liveCaptain(ctx, team.captainSessionId, suppliedCaptain)
         if (captain === undefined) return
         let member = team.members.find(candidate => candidate.name === memberName && candidate.status !== 'removed')
-        if (member === undefined || !isMemberAvailable(ctx, member)) return
+        if (member === undefined) return
+
+        // Sliding no-progress tracking. The clock starts only when the member is
+        // no longer observed as running (a live running member is never rotated,
+        // however long its turn takes) while it still owns an open attempt, and
+        // any progress clears it. Past the window the park marker is dropped so
+        // the dispatch below recovers that generation exactly once; `recoveries`
+        // is carried across the generations of the same task, so a wedged task
+        // stops being auto-recovered after MAX_AUTO_RECOVERIES and becomes a
+        // captain decision instead of an endless rotation.
+        {
+          const now = Date.now()
+          const ownedNow = ownedOpenTask(team.tasks, member.name)
+          const live = liveMember(ctx, member)
+          const progressing = live !== undefined && live.status !== 'idle'
+          if (ownedNow?.attemptId === undefined || member.stopping === true || progressing) {
+            noProgress.delete(member.id)
+          } else {
+            const tracked = noProgress.get(member.id)
+            const sameTask = tracked !== undefined && tracked.taskId === ownedNow.id
+            if (!sameTask) {
+              noProgress.set(member.id, { taskId: ownedNow.id, attemptId: ownedNow.attemptId, since: now, recoveries: 0 })
+            } else if (tracked.attemptId !== ownedNow.attemptId) {
+              noProgress.set(member.id, { taskId: ownedNow.id, attemptId: ownedNow.attemptId, since: now, recoveries: tracked.recoveries })
+            } else if (shouldRecoverStalled(tracked, ownedNow.attemptId, now)) {
+              noProgress.set(member.id, { taskId: ownedNow.id, attemptId: ownedNow.attemptId, since: now, recoveries: tracked.recoveries + 1 })
+              parkedAttempts.delete(member.id)
+            }
+          }
+        }
+
+        if (!isMemberAvailable(ctx, member)) return
 
         // A mailbox-only fallback is real pending work. Deliver it before a
         // fresh task and acknowledge only after Harness accepts the follow-up.
@@ -525,6 +614,22 @@ export function installTeamScheduler(ctx: Context, config: SchedulerConfig): Tea
       ctx.logger.warn(`agent-teams: member status scheduling failed for ${agent.id}: ${String(error)}`)
     })
   })
+
+  // A stall is silent: the member stops producing events, so the sliding window
+  // needs its own bounded sweep. It only kicks live teams that still have work.
+  const sweep = setInterval(() => {
+    void (async () => {
+      try {
+        for (const { workspace, teamId } of seenTeams.values()) {
+          await runtime.kickTeam(workspace, teamId)
+        }
+      } catch (error: unknown) {
+        ctx.logger.warn(`agent-teams: no-progress sweep failed: ${String(error)}`)
+      }
+    })()
+  }, NO_PROGRESS_SWEEP_MS)
+  if (typeof sweep.unref === 'function') sweep.unref()
+  ctx.effect(() => () => { clearInterval(sweep) })
 
   return runtime
 }
