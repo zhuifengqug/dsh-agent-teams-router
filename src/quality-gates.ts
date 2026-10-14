@@ -483,6 +483,37 @@ function verifyCovered(required: readonly string[] | undefined, results: readonl
   return results.length === (required ?? []).length && results.every((item) => item.status === 'passed')
 }
 
+/**
+ * The effective status of a verification run, latest observation per command.
+ *
+ * `commandsRun` is append-in-order, so the last entry for a command is what that
+ * command most recently did. Returns 'failed' when any command's latest
+ * observation failed, otherwise 'passed' (or undefined with no observations).
+ */
+function latestCommandStatus(commands: readonly CommandResult[] | undefined): 'passed' | 'failed' | undefined {
+  if (commands === undefined || commands.length === 0) return undefined
+  const latest = new Map<string, CommandResult>()
+  for (const item of commands) latest.set(item.command, item)
+  return [...latest.values()].some((item) => item.status === 'failed') ? 'failed' : 'passed'
+}
+
+/**
+ * True when a completion decision may rely on the task's stored evidence.
+ *
+ * `attemptId` is the capability of the generation that is running right now, and
+ * `evidenceAttemptId` records which generation actually produced the stored
+ * results. They must name the same generation: a recovered or reassigned
+ * attempt inherits the task but not its predecessor's proof, so a pass recorded
+ * by an earlier capability can never carry the current one to `completed`.
+ *
+ * Evidence supplied in this same update has no stamp of its own yet; it belongs
+ * to the running attempt by construction and is stamped by the caller.
+ */
+function storedEvidenceTrusted(task: TeamTask): boolean {
+  if (task.evidenceAttemptId === undefined) return true
+  return task.attemptId === task.evidenceAttemptId
+}
+
 export function evaluateQualityCompletion(
   task: TeamTask,
   update: QualityCompletionUpdate,
@@ -501,6 +532,12 @@ export function evaluateQualityCompletion(
   const findings = update.findings ?? task.findings
   if (kind === 'review' || kind === 'requirements') {
     if (nextStatus === 'completed') {
+      const verdictSupplied = update.verdict !== undefined
+      // Completing on a stored verdict means relying on whichever generation
+      // recorded it; only this attempt's own verdict is acceptable.
+      if (!verdictSupplied && !storedEvidenceTrusted(task)) {
+        return { ok: false, error: `${kind} cannot complete on a verdict recorded by a previous attempt; re-submit verdict=pass and findings in this update` }
+      }
       if (verdict === undefined) return { ok: false, error: `${kind} cannot complete without verdict=pass` }
       if (verdict !== 'pass') return { ok: false, error: `${kind} with verdict=${verdict} cannot complete` }
       if (openHighFindings(findings).length > 0) {
@@ -517,13 +554,24 @@ export function evaluateQualityCompletion(
 
   if (kind === 'implementation' || kind === 'repair' || kind === 'verification' || kind === 'integration') {
     const commands = update.commandsRun ?? task.commandsRun
-    if (commands?.some((item) => item.status === 'failed') === true) {
+    // Verification is a sequence, not a verdict: the same command may fail and
+    // then pass once the artifact is fixed. Only the LATEST observation of each
+    // command decides, so a re-run can clear an earlier failure without the
+    // worker having to redo the implementation it already finished. Coverage
+    // below still requires every contract command, so dropping a failing entry
+    // cannot be used to hide it.
+    if (latestCommandStatus(commands) === 'failed') {
       if (nextStatus === 'completed') {
         return { ok: false, error: 'verify failure must fail the task', requiredStatus: 'failed' }
       }
     }
     if (nextStatus !== 'completed') return { ok: true }
     const acceptanceResults = update.acceptanceResults ?? task.acceptanceResults
+    // Evidence this update did not author comes from the task record and must
+    // belong to the running generation.
+    if ((update.acceptanceResults === undefined || update.commandsRun === undefined) && !storedEvidenceTrusted(task)) {
+      return { ok: false, error: `${kind} cannot complete on evidence recorded by a previous attempt; re-submit acceptanceResults and commandsRun from this attempt` }
+    }
     if (acceptanceResults === undefined || !acceptanceCovered(task.acceptance, acceptanceResults)) {
       return { ok: false, error: `${kind} completion requires passed acceptanceResults for every acceptance item` }
     }

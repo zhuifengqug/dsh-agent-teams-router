@@ -173,6 +173,7 @@ function clearAttemptResult(task: TeamTask): void {
   task.changedPaths = undefined
   task.acceptanceResults = undefined
   task.commandsRun = undefined
+  task.evidenceAttemptId = undefined
 }
 
 /** Activate the task's current generation for one owner and return its capability id. */
@@ -827,6 +828,7 @@ export function isTeamTask(value: unknown): value is TeamTask {
     && (value['attempt'] === undefined
       || (Number.isSafeInteger(value['attempt']) && (value['attempt'] as number) >= 0))
     && isOptionalString(value['attemptId'])
+    && isOptionalString(value['evidenceAttemptId'])
     && isOptionalString(value['handoffId'])
     && isOptionalString(value['handoffFromMemberId'])
     && (value['reassigning'] === undefined || typeof value['reassigning'] === 'boolean')

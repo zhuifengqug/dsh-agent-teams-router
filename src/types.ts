@@ -156,6 +156,16 @@ export interface TeamTask {
   changedPaths?: string[]
   acceptanceResults?: AcceptanceResult[]
   commandsRun?: CommandResult[]
+  /**
+   * The `attemptId` that produced the stored result fields above.
+   *
+   * A capability is one execution generation: reassignment, retry and cold
+   * recovery all rotate `attemptId`. Stamping the producer lets the completion
+   * gate refuse a pass that belongs to a *previous* generation, which is how a
+   * recovered attempt could otherwise adopt the evidence it never produced.
+   * Cleared together with the results it describes.
+   */
+  evidenceAttemptId?: string
   /** Supplemental observations, attributed to their original execution generation. */
   supplementalEvidence?: TaskEvidence[]
   reviewedTaskId?: string

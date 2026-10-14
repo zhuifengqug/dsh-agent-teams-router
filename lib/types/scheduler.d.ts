@@ -49,7 +49,7 @@ export interface DispatchTicket {
     readonly previousStatus?: 'claimed' | 'in_progress';
     readonly previousAttempt?: number;
     readonly previousAttemptId?: string;
-    readonly previousResult?: Pick<TeamTask, 'output' | 'verdict' | 'findings' | 'changedPaths' | 'acceptanceResults' | 'commandsRun'>;
+    readonly previousResult?: Pick<TeamTask, 'output' | 'verdict' | 'findings' | 'changedPaths' | 'acceptanceResults' | 'commandsRun' | 'evidenceAttemptId'>;
     readonly subject: string;
     readonly description?: string;
     readonly teamDescription?: string;

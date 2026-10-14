@@ -1875,7 +1875,7 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
 
   ctx.tools.register(defineTool({
     name: 'agent_teams_update_task',
-    description: 'Update a task status/output. Members must supply the current attempt_id returned by claim_task; stale attempts are rejected after takeover/reassignment. Terminal results are immutable, but owners and the captain can append acceptanceResults/commandsRun/evidence_note as attributed supplemental evidence, without reclaiming or changing the verdict. A captain must use reassign_task(assignee="captain") before updating active member-owned work.',
+    description: 'Update a task status/output. Members must supply the current attempt_id returned by claim_task; stale attempts are rejected after takeover/reassignment. Terminal results are immutable, but owners and the captain can append acceptanceResults/commandsRun/evidence_note as attributed supplemental evidence, without reclaiming or changing the verdict. A captain must use reassign_task(assignee="captain") before updating active member-owned work. A failing verify command does not end the attempt: fix and re-run it, then submit the fresh result, because only the latest observation per command decides. Evidence recorded by a previous attempt cannot carry the current attempt to completed.',
     parameters: {
       task_id: { type: 'string', required: true, description: 'The task id to update.' },
       attempt_id: { type: 'string', description: 'Members must explicitly include the current attempt_id from their assignment/claim in EVERY update, including failed reviews with findings. If omitted, retry with the same current id; omission does not revoke the attempt.' },
@@ -2031,6 +2031,18 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
         if (input.changedPaths !== undefined) task.changedPaths = input.changedPaths
         if (acceptanceResults !== undefined) task.acceptanceResults = acceptanceResults
         if (commandsRun !== undefined) task.commandsRun = commandsRun
+        // Stamp the producing generation whenever this update wrote evidence.
+        // A later attempt inherits the task but not this proof, so the gate can
+        // refuse a pass that a revoked capability recorded.
+        if (
+          acceptanceResults !== undefined
+          || commandsRun !== undefined
+          || input.changedPaths !== undefined
+          || findings !== undefined
+          || args.verdict !== undefined
+        ) {
+          task.evidenceAttemptId = task.attemptId
+        }
         task.updatedAt = Date.now()
         const priorDependencies = new Map(fresh.tasks.map(item => [item.id, [...item.dependencies]]))
         const followUp = (task.status === 'failed' && (task.verdict === 'needs_revision' || task.verdict === 'reject'))
