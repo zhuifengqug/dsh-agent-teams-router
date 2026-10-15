@@ -18,6 +18,10 @@
    theme to body, so cards, overlays, and portaled dialogs inherit live colors
    without a second theme store or a light-only palette bridge. */
 
+.dagNode[data-verdict-stale] {
+  border-style: dashed;
+}
+
 .badge {
   position: absolute;
   top: 64px;

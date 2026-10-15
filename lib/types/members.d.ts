@@ -53,6 +53,8 @@ export interface MemberLlmSelectionRequest {
     model?: string;
     /** Plugin-level member model default. */
     defaultModel?: string;
+    /** Provider paired with the plugin-level member model default. */
+    defaultProvider?: string;
     /** Explicit reasoning effort; "default" selects the target model's default effort. */
     reasoningEffort?: string;
     /** Configured fallback route. */
@@ -96,13 +98,20 @@ export declare function steerCaptainReport(captain: Pick<Agent, 'steer'>, from: 
 interface FailedMemberAttempt {
     readonly captainSessionId: string;
     readonly memberId: string;
-    readonly task?: Pick<TeamTask, 'id' | 'attempt' | 'attemptId'>;
+    readonly task?: Pick<TeamTask, 'id' | 'attempt' | 'attemptId' | 'status' | 'subject'>;
 }
+export type MemberFailureDisposition = 'failed_attempt' | 'noted_settled' | 'ignored';
+export declare function classifyMemberFailure(observed: FailedMemberAttempt, current: {
+    member?: Pick<TeamMember, 'id' | 'status'>;
+    openTask?: Pick<TeamTask, 'id' | 'attempt' | 'attemptId'>;
+    taskRecord?: Pick<TeamTask, 'id' | 'attempt' | 'attemptId' | 'status' | 'subject'>;
+    latestStartedTask?: Pick<TeamTask, 'id'>;
+}): MemberFailureDisposition;
 /** Record a final turn failure, never an intermediate request retry. */
 export declare function failMemberOpenAttempt(ctx: Context, stateRoot: string, teamId: string, memberName: string, failure: {
     readonly code: string;
     readonly message: string;
-}, fallbackSession: Session, observed: FailedMemberAttempt): Promise<boolean>;
+}, fallbackSession: Session, observed: FailedMemberAttempt): Promise<MemberFailureDisposition | false>;
 /**
  * Resolve one member's complete model selection. Ordinary members snapshot the
  * captain's current request route and reasoning effort. When provider or model

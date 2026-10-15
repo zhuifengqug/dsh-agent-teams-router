@@ -1,14 +1,14 @@
 /**
- * agency-agents 可选桥——`@michengai/dsh-agency-agents` 的三个服务任一缺失即整体回落。
+ * agency-agents 可选桥——整团装配需要三个服务，个人专家只需要 library + persona。
  *
  * ## 边界
  *
- * - **本插件完全不强依赖 agency-agents**：三个服务任一缺席（未安装、未启用、版本不匹配、
- *   形状不认识）都必须回到今天的 AgentTeams 行为，不报错、不降级、不发明替身。
+ * - **本插件完全不强依赖 agency-agents**：所需服务缺席（未安装、未启用、版本不匹配、
+ *   形状不认识）时由调用方回落；个人专家发现只依赖 library，绑定才读取 persona。
  * - **三个服务只通过 `ctx.get()` 在调用时探测**：模块级 `inject` 是**硬依赖**——
- *   写进 `inject` 数组会让 agency-agents 缺席时本插件整体不激活，与「任一缺失即整体回落」正好相反。
+ *   写进 `inject` 数组会让 agency-agents 缺席时本插件整体不激活，与可选桥的约定相反。
  * - **本模块全部是纯函数式形状**：服务句柄与方法返回值都以入参承接并自行校验形状，
- *   唯一接触 ctx 的入口是 `agencyServicesOf()`（只读 `get`），便于用 stub 做单测。
+ *   只有服务 owner 探测 ctx（只读 `get`），便于用 stub 做单测。
  *
  * ## 核实过的服务形状（`@michengai/dsh-agency-agents@1.0.11`，实读其构建产物）
  *
@@ -225,18 +225,24 @@ export declare function resolveAgencyCreateRequest(args: {
     ok: false;
     error: string;
 };
-/**
- * 一次性走完「探测 → 取团 → 装配」（工具层的唯一入口）。
- *
- * 服务缺席返回 `available:false`，调用方据此拒绝 `agencyTeam` 参数并给出原因；
- * 其余失败（team 不存在 / 阵容超 maxMembers）返回可读英文 error。
- */
-/**
- * 列出用户已启用的专家（只读，不建团、不读 persona 正文）。
- *
- * 队长据此自己挑人——不需要用户点名。catalog 不可用时返回空数组而不是抛错，
- * 调用方据 `available` 决定是否提示用户。
- */
+/** 个人专家目录的统一输出；enabled 只来自 catalog 顶层清单。 */
+export interface AgencyExpertSummary {
+    slug: string;
+    division: string;
+    description: string;
+    enabled: boolean;
+}
+/** 列出完整专家目录与启用状态，只依赖 library；不读 teams 或 persona。 */
+export declare function listAgencyExperts(ctx: {
+    get(key: never): unknown;
+} | undefined): Promise<{
+    available: false;
+    reason: string;
+} | {
+    available: true;
+    experts: AgencyExpertSummary[];
+}>;
+/** 保留旧清单契约，只返回已启用项；与完整清单共用目录 owner。 */
 export declare function listEnabledExperts(ctx: {
     get(key: never): unknown;
 } | undefined): Promise<{
@@ -250,11 +256,7 @@ export declare function listEnabledExperts(ctx: {
         description: string;
     }>;
 }>;
-/**
- * 给**一个**队员取专家 persona。未启用或不存在都拒绝，不静默当普通队员。
- *
- * 这是「建队员时按需挂专家」的唯一入口：阵容不是必须整团替换，队员有无专家各自独立。
- */
+/** 严格解析单个专家；既有调用方仍能区分未知、停用、缺正文。 */
 export declare function resolveExpertPersona(input: {
     ctx: {
         get(key: never): unknown;
@@ -269,6 +271,23 @@ export declare function resolveExpertPersona(input: {
     ok: false;
     error: string;
 }>;
+/** 建队员时只解析明确选中的一个 slug；未绑定时静默使用普通队员。 */
+export declare function resolveOptionalExpertPersona(input: {
+    ctx: {
+        get(key: never): unknown;
+    } | undefined;
+    slug?: string;
+    locale: string;
+}): Promise<{
+    slug: string;
+    executionPrompt: string;
+} | undefined>;
+/**
+ * 一次性走完「探测 → 取团 → 装配」（整团工具入口）。
+ *
+ * 服务缺席返回 `available:false`，调用方据此处理 `agencyTeam` 参数；
+ * 其余失败（team 不存在 / 阵容超 maxMembers）返回可读英文 error。
+ */
 export declare function loadAgencyTeam(input: {
     ctx: {
         get(key: never): unknown;

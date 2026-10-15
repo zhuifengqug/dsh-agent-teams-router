@@ -13,6 +13,7 @@
  * @module dsh-agent-teams/state
  */
 import { type TaskStatus, type TeamMessage, type TeamRouteAuditProjection, type TeamState, type TeamTask } from './types.ts';
+export { normalizeSentinelNumericTaskFields, isValidFindingLine } from './quality-gates.ts';
 export { amendTaskContract, buildCoverageMatrix, canDeclareDelivery, classifyChangedPath, collectChangedPaths, defaultQualityDeliveryGraph, describeQualityLoop, evaluateQualityCompletion, hasValidQualityTaskFields, isQualityKind, isTaskRevision, normalizeBlankOptionalTaskFields, pathMatchesScope, planQualityFollowUp, qualityPlanningPrompt, resumeTeamState, sanitizeReviewAcceptance, sanitizeReviewObjective, taskKindOf, validateCreateTask, } from './quality-gates.ts';
 export type { ContractAmendmentInput } from './quality-gates.ts';
 /** Mailbox key of the captain. */
@@ -100,6 +101,7 @@ export declare function readTeam(stateRoot: string, teamId: string): Promise<Tea
  * @param teamId - the team's sanitized id.
  * @returns the team record, or `undefined` when absent.
  */
+export declare function describeTeamStateDefect(raw: unknown, expectedId: string): string;
 export declare function readTeamSync(stateRoot: string, teamId: string): TeamState | undefined;
 /**
  * Persist one team record (inside the caller's lock).

@@ -34,6 +34,8 @@ export interface Config {
     memberProvider?: string;
     /** Optional model override applied to every member. */
     memberModel?: string;
+    /** LLM provider paired with memberModel when the default model differs from the captain's route. */
+    memberLlmProvider?: string;
     /** Prompt injected into member personas and automatic task assignments. */
     executionPrompt?: string;
     /** Plugin-wide fallback route for unavailable member models. */

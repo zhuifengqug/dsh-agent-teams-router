@@ -473,6 +473,7 @@ function StagedMemberEditor({ team, member, modelDirectory, onPendingChange, t }
         <span className={css.planCardIdentity}>
           <strong>{member.name}</strong>
           <span>{role || t('plan.member.roleFallback')}</span>
+          {member.expert !== undefined && <span data-member-expert={member.expert}>{t('member.expert', { expert: member.expert })}</span>}
         </span>
         <span className={css.planCardMeta} title={route}>{route}</span>
         {dirty && <em className={css.planDirty}>{t('plan.unsaved')}</em>}

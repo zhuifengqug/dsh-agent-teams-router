@@ -9,6 +9,7 @@ export interface ActivityMember {
   readonly model?: string
   readonly reasoningEffort?: string
   readonly executionPrompt?: string
+  readonly expert?: string
   readonly status?: 'idle' | 'working' | 'removed'
   readonly activity: 'working' | 'idle' | 'unknown'
   readonly progress: number
@@ -49,6 +50,7 @@ export interface ActivityTask {
   readonly kind?: string
   readonly round?: number
   readonly verdict?: string
+  readonly verdictStale?: string
   /**
    * Task difficulty tier (`low`/`medium`/`high`/`max`).
    *
@@ -105,6 +107,9 @@ export interface ActivityTeam {
   readonly tasks: readonly ActivityTask[]
   readonly messageCount: number
   readonly captainInbox: readonly ActivityMessage[]
+  readonly loopState?: string
+  readonly deliverable?: boolean
+  readonly delivery?: { readonly ok: boolean; readonly blockers: readonly string[]; readonly warnings: readonly string[] }
 }
 
 /** A successfully-created conversation card that currently needs updates. */

@@ -70,7 +70,7 @@ export interface DispatchTicket {
     readonly previousStatus?: 'claimed' | 'in_progress';
     readonly previousAttempt?: number;
     readonly previousAttemptId?: string;
-    readonly previousResult?: Pick<TeamTask, 'output' | 'verdict' | 'findings' | 'changedPaths' | 'acceptanceResults' | 'commandsRun' | 'evidenceAttemptId'>;
+    readonly previousResult?: Pick<TeamTask, 'output' | 'verdict' | 'findings' | 'changedPaths' | 'acceptanceResults' | 'commandsRun' | 'evidenceAttemptId' | 'reviewedAttempt' | 'reviewedArtifacts' | 'reviewedGaps' | 'reviewedScope' | 'reviewedDuringDrift' | 'verdictStartSnapshot'>;
     readonly subject: string;
     readonly description?: string;
     readonly teamDescription?: string;
@@ -86,6 +86,7 @@ export interface DispatchTicket {
     readonly acceptance?: readonly string[];
     readonly verify?: readonly string[];
     readonly reviewedTaskId?: string;
+    readonly findingSourceTaskIds?: readonly string[];
 }
 /**
  * Recursively collect `status=completed` ancestors of `taskId` in topological
@@ -95,6 +96,6 @@ export declare function collectCompletedDependencyOutputs(tasks: readonly TeamTa
 /** Format completed-dependency outputs with per-item and total truncation. */
 export declare function formatDependencyOutputs(items: readonly DependencyOutput[]): string;
 export declare function nextReadyTask(tasks: readonly TeamTask[], memberName: string): TeamTask | undefined;
-export declare function assignmentPrompt(ticket: DispatchTicket, stateDir: string, teamId: string): string;
+export declare function assignmentPrompt(ticket: DispatchTicket, stateDir: string, teamId: string, workOrderWarnings?: readonly string[]): string;
 /** Install one scheduler and its member activity observer. */
 export declare function installTeamScheduler(ctx: Context, config: SchedulerConfig): TeamScheduler;

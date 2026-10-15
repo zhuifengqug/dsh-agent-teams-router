@@ -49,7 +49,18 @@ test('doctor runs through an installed bin symlink and reports success or failur
   mkdirSync(host)
   writeFileSync(join(host, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: policy.recommendedHost }))
   const bin = join(root, 'dsh-agent-teams-doctor')
-  symlinkSync(fileURLToPath(new URL('./doctor.mjs', import.meta.url)), bin, 'file')
+  try {
+    symlinkSync(fileURLToPath(new URL('./doctor.mjs', import.meta.url)), bin, 'file')
+  } catch (error) {
+    // Windows without Developer Mode or elevation denies file symlink creation
+    // (EPERM/EACCES). The shebang path cannot be exercised on such a host, so
+    // this is a platform capability skip, not a failure of the doctor contract.
+    if (error.code === 'EPERM' || error.code === 'EACCES') {
+      t.skip(`symlink capability unavailable: ${error.code}`)
+      return
+    }
+    throw error
+  }
   // Unix executes the installed shebang directly. Windows does not implement
   // shebangs: invoke Node with the same symlink path, retaining the argv[1]
   // versus import.meta.url regression without relying on a command shell.

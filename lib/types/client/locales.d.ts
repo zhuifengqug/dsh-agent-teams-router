@@ -128,6 +128,7 @@ export declare const zh: {
     'plan.badge': string;
     'plan.title': string;
     'plan.description': string;
+    'member.expert': string;
     'plan.member.role': string;
     'plan.member.provider': string;
     'plan.member.model': string;
@@ -368,6 +369,7 @@ export declare const en: {
     'plan.badge': string;
     'plan.title': string;
     'plan.description': string;
+    'member.expert': string;
     'plan.member.role': string;
     'plan.member.provider': string;
     'plan.member.model': string;

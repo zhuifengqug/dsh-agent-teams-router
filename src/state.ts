@@ -18,7 +18,8 @@ import { readFileSync } from 'node:fs'
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { TERMINAL_TASK_STATUSES, type TaskStatus, type TeamMember, type TeamMessage, type TeamProfileSnapshot, type TeamRouteAuditProjection, type TeamRouteAuditStep, type TeamState, type TeamTask } from './types.ts'
-import { hasValidQualityTaskFields, isReviewPolicy, normalizeBlankOptionalTaskFields } from './quality-gates.ts'
+import { hasValidQualityTaskFields, isReviewPolicy, isValidFindingLine, normalizeBlankOptionalTaskFields } from './quality-gates.ts'
+export { normalizeSentinelNumericTaskFields, isValidFindingLine } from './quality-gates.ts'
 import { TASK_DIFFICULTIES, type TaskDifficulty } from './router.ts'
 
 export {
@@ -174,6 +175,12 @@ function clearAttemptResult(task: TeamTask): void {
   task.acceptanceResults = undefined
   task.commandsRun = undefined
   task.evidenceAttemptId = undefined
+  task.reviewedArtifacts = undefined
+  task.reviewedGaps = undefined
+  task.reviewedScope = undefined
+  task.reviewedDuringDrift = undefined
+  task.reviewedAttempt = undefined
+  task.verdictStartSnapshot = undefined
 }
 
 /** Activate the task's current generation for one owner and return its capability id. */
@@ -246,7 +253,7 @@ export async function readTeam(stateRoot: string, teamId: string): Promise<TeamS
     const value: unknown = JSON.parse(stripLeadingBom(raw))
     const team = coerceTeamState(value, teamId)
     if (team === undefined) {
-      throw new Error(`invalid AgentTeams state in team "${teamId}"`)
+      throw new Error(`invalid AgentTeams state in team "${teamId}": ${describeTeamStateDefect(value, teamId)}`)
     }
     return team
   } catch (error: unknown) {
@@ -266,13 +273,39 @@ export async function readTeam(stateRoot: string, teamId: string): Promise<TeamS
  * @param teamId - the team's sanitized id.
  * @returns the team record, or `undefined` when absent.
  */
+export function describeTeamStateDefect(raw: unknown, expectedId: string): string {
+  if (!isRecord(raw)) return 'record must be a JSON object'
+  if (!Array.isArray(raw['tasks'])) return raw['tasks'] === undefined ? 'tasks is missing' : 'tasks must be an array'
+  for (const [index, task] of (raw['tasks'] as unknown[]).entries()) {
+    if (!isRecord(task)) return `tasks[${index}] must be an object`
+    const label = typeof task['id'] === 'string' && task['id'] !== '' ? `task "${task['id']}"` : `tasks[${index}]`
+    const findings = task['findings']
+    if (Array.isArray(findings)) {
+      for (const [findingIndex, finding] of findings.entries()) {
+        if (!isRecord(finding)) return `${label}: findings[${findingIndex}] must be an object`
+        if (finding['line'] !== undefined && !isValidFindingLine(finding['line'])) {
+          return `${label}: findings[${findingIndex}].line ${JSON.stringify(finding['line'])} must be an integer >= 0`
+        }
+      }
+    }
+    for (const [field, minimum] of [['round', 1], ['reviewedAttempt', 0], ['attempt', 0]] as const) {
+      const value = task[field]
+      if (value !== undefined && !(Number.isSafeInteger(value) && (value as number) >= minimum)) {
+        return `${label}: ${field} ${JSON.stringify(value)} must be an integer >= ${minimum}`
+      }
+    }
+  }
+  if (raw['id'] !== expectedId) return `id ${JSON.stringify(raw['id'])} must equal "${expectedId}"`
+  return 'record does not satisfy the durable team contract'
+}
+
 export function readTeamSync(stateRoot: string, teamId: string): TeamState | undefined {
   try {
     const raw = readFileSync(join(stateRoot, teamId, 'team.json'), 'utf8')
     const value: unknown = JSON.parse(stripLeadingBom(raw))
     const team = coerceTeamState(value, teamId)
     if (team === undefined) {
-      throw new Error(`invalid AgentTeams state in team "${teamId}"`)
+      throw new Error(`invalid AgentTeams state in team "${teamId}": ${describeTeamStateDefect(value, teamId)}`)
     }
     return team
   } catch (error: unknown) {

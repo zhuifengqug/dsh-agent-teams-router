@@ -20,6 +20,7 @@ export interface TeamActivityMember {
     readonly model: string;
     readonly reasoningEffort: string;
     readonly executionPrompt: string;
+    readonly expert?: string;
     readonly status: MemberStatus;
     readonly activity: 'working' | 'idle' | 'unknown';
     readonly progress: number;
@@ -42,6 +43,7 @@ export interface TeamActivityTask {
     readonly kind?: string;
     readonly round?: number;
     readonly verdict?: string;
+    readonly verdictStale?: string;
     /** Routing tier when the task carries a routing row (low/medium/high/max). */
     readonly difficulty?: string;
     /** Free-text role stored on the task, so an editor can prefill instead of guessing. */
@@ -91,6 +93,13 @@ export interface TeamActivitySnapshot {
     readonly tasks: readonly TeamActivityTask[];
     readonly messageCount: number;
     readonly captainInbox: readonly TeamActivityMessage[];
+    readonly loopState?: string;
+    readonly deliverable?: boolean;
+    readonly delivery?: {
+        readonly ok: boolean;
+        readonly blockers: readonly string[];
+        readonly warnings: readonly string[];
+    };
 }
 /** Snapshot projection switches for live and archived teams. */
 export interface TeamSnapshotOptions {
@@ -98,6 +107,7 @@ export interface TeamSnapshotOptions {
     readonly includeRemoved?: boolean;
     /** Archived teams have no meaningful live activity after their sessions stop. */
     readonly historic?: boolean;
+    readonly workspacePath?: string;
 }
 /** Compact `provider/model` route for the activity panel, or just the model. */
 export declare function memberModelRoute(member: {
@@ -122,6 +132,7 @@ export declare function assembleTeamSnapshot(ctx: Context, stateRoot: string, wo
 export declare function collectTeamsActivity(ctx: Context, roots: readonly {
     workspace: string;
     stateRoot: string;
+    workspacePath?: string;
 }[]): Promise<TeamActivitySnapshot[]>;
 /**
  * Collect every archived team under the given workspace state roots (the

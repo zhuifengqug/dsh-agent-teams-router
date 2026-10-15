@@ -10,6 +10,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { Agent } from '@deepseek-ai/dsh-agent';
+import type { ArtifactSnapshot } from './types.ts';
 import { type TeamState, type TeamTask } from './types.ts';
 export { steerCaptainReport } from './members.ts';
 /** Resolved plugin config consumed by the tools. */
@@ -20,6 +21,8 @@ export interface ToolsConfig {
     memberProvider: string;
     /** Optional member model override. */
     memberModel?: string;
+    /** LLM provider paired with the configured member model. */
+    memberLlmProvider?: string;
     /** Prompt injected into member personas and assignments. */
     executionPrompt?: string;
     /** Plugin fallback route. */
@@ -176,7 +179,9 @@ export declare function stagedPlanFeedbackContext(teamName: string): string;
  * @param config - resolved tool config.
  */
 export declare function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): AgentTeamsRuntime;
-export declare function applyQualityFollowUp(team: TeamState, closed: TeamTask): {
+export declare function applyQualityFollowUp(team: TeamState, closed: TeamTask, snapshotPaths?: (paths: readonly string[]) => ArtifactSnapshot): {
     created: TeamTask[];
     escalated: boolean;
+    reason?: string;
+    excludedFindings?: string[];
 };

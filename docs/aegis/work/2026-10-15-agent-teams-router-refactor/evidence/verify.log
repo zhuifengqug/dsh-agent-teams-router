@@ -1,0 +1,2596 @@
+$ node scripts/verify.mjs && node scripts/fallback-tdd.mjs && node scripts/member-failure-tdd.mjs && pnpm verify:quality-gates && node --test scripts/member-experts.test.mjs scripts/agency-bridge.test.mjs && node scripts/lifecycle-verify.mjs && node scripts/stress-verify.mjs && node --test scripts/issue-159.test.mjs && pnpm verify:corrupt-state && pnpm verify:web-routes && pnpm verify:release && pnpm verify:readme && pnpm verify:skill && pnpm verify:harness-contract && pnpm verify:http-body && pnpm verify:compatibility && pnpm verify:capabilities && pnpm verify:member-spawn-recovery && pnpm test:git-install && pnpm verify:source-runner && pnpm verify:git-artifact
+dsh-agent-teams offline verification
+  PASS  profile keys trim and assignees canonicalize
+  PASS  profile tasks are stable topological order
+  PASS  profile invocation supports --profile=
+  PASS  profile invocation leaves mid-goal profile text untouched
+  PASS  profile prompt omits empty config and truncates protocol
+  PASS  seed planning remains the default
+  PASS  fixed profile directory includes purpose when no protocol is configured
+  PASS  captain planning keeps the roster and drops seed tasks
+  PASS  profile prompt marks captain planning instead of unused seed counts
+  PASS  member persona includes completed/failed and claimed transition rules
+  PASS  member welcome reports assigned pending count
+  PASS  dependency outputs truncate and keep the newest seed id
+  PASS  recursive dependency collection stops on cycles
+  PASS  persona protocol is truncated
+  PASS  execution prompt is injected into persona and assignment
+1/8 packaging contract
+  PASS  cordis.patch.yml name matches the published package name
+  PASS  files[] ships the bundle patch and lib
+  PASS  scoped package publishes publicly
+  PASS  shared runtime peers are optional for standalone profile installs
+  PASS  client bundle registers under the package name
+  PASS  AgentTeams locale dictionaries have identical keys and template placeholders
+  PASS  client uses the uiConversation event registry and registers the official locale namespace
+  PASS  slash command transcript hides the duplicate pre-message result row
+  PASS  stop-team control lives in the team panel and requires confirmation
+  PASS  clean builds do not package the removed composer stop banner
+  PASS  staged member routes use the official directory and primitive Menu instead of native route selects
+  PASS  staged plan review offers continue, discard, and approve outcomes
+  PASS  review decisions control the Captain turn instead of relying on front-end state alone
+  PASS  continued planning uses a model-facing atomic staged-plan tool instead of state-file edits
+  PASS  discarded and stopped teams render terminal semantics instead of pending execution copy
+  PASS  artwork directory contains exactly the V2 captain, eight members, and six actions
+  PASS  all V2 artwork is 256x256 8-bit RGBA PNG
+  PASS  client mapping and host allowlist reference every V2 artwork asset
+  PASS  canonical eight-member roster resolves to eight distinct role images
+  PASS  whale portraits use transparent cutouts instead of dark circular plates
+  PASS  all client surfaces consume host semantic colors without redefining the host palette
+  PASS  working member and captain states use the host semantic business color
+  PASS  activity panel uses the shell overlay instead of a page-breaking body portal
+  PASS  panel exposes drag, resize, dock, and fold interaction probes
+  PASS  staged plan editor keeps long plans compact and guards consequential actions
+  PASS  running DAG tasks reuse the animated work glyph without losing focus context
+  PASS  running tasks surface the assignee model on the activity card
+  PASS  member model badge renders compact text inline with full-route metadata
+  PASS  the old separate third-line member model span and locale key are removed
+  PASS  delegation list collapses finished members and sorts them by finish time (issue #192)
+  PASS  member model badge is a compact neutral inline pill that truncates without overflowing
+  PASS  activity polling combines card demand with current-session cold discovery
+2/8 pure rules
+  PASS  sanitizeKey('My Team!') -> 'my-team'
+  PASS  CJK names survive folding
+  PASS  distinct non-Latin names stay distinct
+  PASS  names with no letters or digits get distinct keys, not a shared constant
+  PASS  folding is deterministic
+  PASS  long names stay inside the filesystem name limit
+  PASS  long names sharing a prefix stay distinct
+  PASS  keys stay a single safe path segment
+  PASS  pending -> claimed allowed
+  PASS  pending -> in_progress denied
+  PASS  in_progress -> completed allowed
+  PASS  completed -> in_progress denied
+  PASS  same status is a no-op
+  PASS  finding line validator accepts nonnegative safe integers
+  PASS  numeric no-line and sentinel fields self-heal
+  PASS  wrong-typed numeric contract fields remain visible to validation
+  PASS  state diagnostic names finding line and task
+3/8 dependency gating
+  PASS  all-done deps satisfied
+  PASS  pending dep blocks
+  PASS  failed dep blocks too
+4/8 on-disk team flow (temp dir)
+  PASS  team.json round-trips
+  PASS  team.json accepts a UTF-8 BOM
+  PASS  cold-resume ignores dirty optional profile and seed id
+  PASS  cold-resume recovers blank optional quality fields (#105)
+  PASS  cold-resume keeps non-blank optional quality fields (#105)
+  PASS  #188 numeric sentinels self-heal from persisted team.json
+  PASS  #188 wrong-typed line remains invalid and diagnostic names its field
+  PASS  cold-resume rejects non-string acceptance items
+  PASS  cold-resume rejects non-string outOfScope items
+  PASS  cold-resume rejects non-string sourceFindingIds items
+  PASS  findTeamByCaptain finds the team
+  PASS  findTeamByCaptain ignores other captains
+  PASS  findTeamByParticipant finds the captain
+  PASS  findTeamByParticipant finds an active member
+  PASS  findTeamByParticipant rejects a removed member
+  PASS  mailbox append/read preserves backslashes
+  PASS  mailbox accepts BOM-prefixed JSONL records
+  PASS  mailbox skips malformed JSON and malformed shapes
+  PASS  missing mailbox reads empty
+  PASS  withTeamLock keeps same-key workers strictly serial and ordered
+  PASS  withTeamLock queue entry drains after the last waiter settles
+  PASS  withTeamLock keeps its queue entry while the lock is held or handed off
+  PASS  withTeamLock wakes the queued successor and drops the key afterwards
+  PASS  multiple teams for one captain fail as ambiguous
+  PASS  multiple teams for one member fail as ambiguous
+  PASS  invalid team.json shape is rejected at the durable boundary
+  PASS  removeTeamDir removes the team
+  PASS  archive moves the team out of live scan
+  PASS  archive keeps team.json readable
+  PASS  archive lists the team id
+  PASS  archive dir skips live readTeam
+5/8 host visual-state functions (activity panel)
+  PASS  completed -> completed visual state
+  PASS  failed -> failed visual state
+  PASS  cancelled -> cancelled visual state
+  PASS  in_progress -> running visual state
+  PASS  pending with completed dep -> open
+  PASS  pending with open dep -> blocked
+  PASS  missing dependency is ignored (not blocked)
+  PASS  t1 depth 0
+  PASS  t2 depth 1 (longest path)
+  PASS  t3 depth 2
+  PASS  missing dep contributes no depth
+6/8 client relationship projections
+  PASS  task stages sort by depth
+  PASS  task stages sort ids naturally
+  PASS  non-finite depth falls back to stage 0
+  PASS  relationship chain includes upstream dependency
+  PASS  relationship chain includes focused task
+  PASS  relationship chain includes downstream dependent
+  PASS  relationship chain excludes sibling branch
+  PASS  pinned dependency chain wins over keyboard and hover previews
+  PASS  keyboard dependency chain wins over delayed hover preview
+  PASS  hover dependency chain is used without a pinned or keyboard task
+  PASS  relationship traversal is cycle-safe
+  PASS  edge-free tasks switch to the fill-width parallel grid
+  PASS  live captain team is selected only for the current session
+  PASS  halted captain team is hidden from the composer banner
+  PASS  active team with working members stays visible
+  PASS  planning roster with no tasks still shows the banner
+  PASS  halted team is not active
+  PASS  staged team is not presented as actively executing
+  PASS  settled failed/completed team is not waiting to be scheduled
+  PASS  progress summary prefers running task titles
+  PASS  delegation list keeps running members first in snapshot order
+  PASS  delegation list sorts finished members by finish time, newest first
+  PASS  member finish time ignores open tasks and missing stamps
+  PASS  a real dependency keeps the layered DAG layout
+  PASS  compact DAG lays dependency depths out left-to-right
+  PASS  compact DAG keeps stable rows and reference node geometry
+  PASS  compact DAG emits one curved SVG edge per valid dependency
+  PASS  task model labels prefer the snapshot field and fall back to the assignee route
+  PASS  existing member route helpers retain expanded fallback regression coverage
+  PASS  docked panel follows the shell anchor and retains an available-height ceiling
+  PASS  floating panel movement clamps every edge inside the shell
+  PASS  docked left-edge resize preserves the right anchor
+  PASS  floating left-edge resize preserves the opposite edge at minimum width
+  PASS  floating corner resize preserves its top-left anchor at shell limits
+  PASS  floating bottom resize preserves its top edge at the shell limit
+  PASS  dock toggle preserves width while restoring shell alignment and content-fit height
+  PASS  compact shell disables free geometry and uses a balanced inset
+  PASS  persisted panel state rejects corrupt or partial values
+  PASS  persisted panel height migrates to auto but preserves explicit manual sizing
+  PASS  expanded activity panel belongs only to its current session
+  PASS  restored live activity stays collapsed when a conversation is reopened
+  PASS  archived-only conversation restore never auto-expands the activity panel
+  PASS  a new live team appearing after restore still auto-expands once
+  PASS  activity monitor coalesces duplicate cards into one shared target
+  PASS  one card cleanup keeps another card monitoring
+  PASS  archived targets retire from polling
+  PASS  activity monitor publishes lifecycle changes without duplicate-card churn
+  PASS  no monitor targets create no request and no timer
+  PASS  a cardless cold session restores live and archive once, then probes at the discovery cadence
+  PASS  a cardless session keeps probing at the discovery cadence after an empty first pass
+  PASS  a team created after the discovery pass is picked up without a reload and upgrades to the live cadence
+  PASS  explicit card targets poll at the live cadence from the start
+  PASS  a slow state request never overlaps the next interval
+  PASS  stopping activity polling clears its timer and aborts the in-flight request
+  PASS  a late response after stop cannot publish snapshots
+  PASS  a live miss checks archive once and retires even an orphaned legacy card
+  PASS  rc.8 member navigation refreshes the parent catalog and opens an addressed continuable child
+  PASS  pre-rc.8 member navigation keeps the ordinary session fallback
+  PASS  0.1.5 member navigation selects the Conversation after opening its transcript
+  PASS  0.1.5 superseded catalog refresh cannot steal navigation
+  PASS  agent team cards derive a stable id from the standard create tool call
+  PASS  malformed create tool arguments do not create a card
+  PASS  agent team cards preserve the host Unicode team key
+  PASS  agent team cards read canonical create metadata
+  PASS  agent team cards recover canonical running ids from legacy text
+  PASS  agent team cards recover canonical staged ids from legacy text
+  PASS  agent team cards concatenate only text result blocks
+  PASS  agent_teams_create publishes canonical identity metadata
+  PASS  member report delivery calls the live captain steer API
+  PASS  failed live captain delivery falls back to the durable mailbox
+7/8 member model selection and continuation restore
+  PASS  ordinary member snapshots the captain current route and effort
+  PASS  cross-provider route uses the target model default instead of captain effort
+  PASS  plugin memberModel route uses that target model default effort
+  PASS  model-only default rejects zero or ambiguous provider owner: 0
+  PASS  model-only default rejects zero or ambiguous provider owner: 2
+  PASS  empty model catalog preserves dynamic model ids containing slash
+  PASS  explicit slash model id keeps explicit route and avoids ownership inference
+  PASS  configured memberLlmProvider pairs with memberModel
+  PASS  explicit member effort overrides cross-provider target default
+  PASS  explicit member route takes precedence over plugin defaults
+  PASS  default sentinel opts out of same-route captain effort inheritance
+  PASS  explicit provider without model is rejected
+  PASS  empty explicit reasoning effort is rejected
+  PASS  approval model preflight caches one catalog lookup per provider
+  PASS  approval model preflight rejects an unlisted typo before spawn
+  PASS  #20: spawn receives the resolved per-member provider and model
+  PASS  fresh child request receives the resolved reasoning effort
+  PASS  cold-resumed child restores provider, model, and reasoning from team.json
+8/8 state-file atomic write hardening (Windows EPERM fallback)
+  PASS  persistent EPERM exhausts the rename retries (1 initial + 3 retries)
+  PASS  persistent EPERM falls back to a direct overwrite of the target
+  PASS  the temp file is removed after the fallback write
+  PASS  a transient EPERM recovers via rename retries without the fallback
+  PASS  failure of both the atomic and the direct path raises AggregateError
+  PASS  the temp file is removed even after a dual failure
+  PASS  writeTeam survives a real Windows lock without FILE_SHARE_DELETE
+  PASS  archiveTeamDir survives a transient Windows directory lock via rename retries
+
+all checks passed
+  PASS  member fallback config is normalized
+  PASS  profile fallback config is normalized
+  PASS  member prompt config is normalized
+  PASS  fallback requires provider
+  PASS  fallback requires model
+  PASS  prompt is present in assignment
+  PASS  prompt is present in persona
+  PASS  assignment does not require process disclosure
+  PASS  fallback whitelist includes QUOTA
+  PASS  fallback whitelist includes RATE_LIMIT
+  PASS  fallback whitelist includes AUTH
+  PASS  fallback whitelist includes MISSING_CREDENTIAL
+  PASS  fallback whitelist includes NO_ADAPTER
+  PASS  fallback whitelist excludes CONTEXT_WINDOW_EXCEEDED
+  PASS  fallback whitelist excludes INVALID_CREDENTIAL
+  PASS  fallback whitelist excludes INVALID_ARGS
+  PASS  fallback whitelist excludes TASK_FAILED
+  PASS  eligible failure switches and retries
+  PASS  fallback switches at most once
+  PASS  non-eligible failure keeps primary route
+fallback TDD checks passed
+TAP version 13
+# Subtest: always retry keeps the owned task open and sends no false failure report
+ok 1 - always retry keeps the owned task open and sends no false failure report
+  ---
+  duration_ms: 19.7621
+  type: 'test'
+  ...
+# Subtest: request handler delegates recovery and leaves exhausted requests open until final error
+ok 2 - request handler delegates recovery and leaves exhausted requests open until final error
+  ---
+  duration_ms: 9.5694
+  type: 'test'
+  ...
+# Subtest: fallback recovers once and exhausted fallback still delegates without failing the task
+ok 3 - fallback recovers once and exhausted fallback still delegates without failing the task
+  ---
+  duration_ms: 17.4555
+  type: 'test'
+  ...
+# Subtest: aborted request does not fail a task or consume its fallback route
+ok 4 - aborted request does not fail a task or consume its fallback route
+  ---
+  duration_ms: 18.6832
+  type: 'test'
+  ...
+# Subtest: final failure notifies idle captain once and flushes without an idle event
+ok 5 - final failure notifies idle captain once and flushes without an idle event
+  ---
+  duration_ms: 41.9395
+  type: 'test'
+  ...
+# Subtest: final failure notifies running captain once and flushes without an idle event
+ok 6 - final failure notifies running captain once and flushes without an idle event
+  ---
+  duration_ms: 43.0994
+  type: 'test'
+  ...
+# Subtest: task that completes while final failure waits for the lock gets a note only
+ok 7 - task that completes while final failure waits for the lock gets a note only
+  ---
+  duration_ms: 42.9845
+  type: 'test'
+  ...
+# Subtest: settled task failure adds one captain note and preserves the task record
+ok 8 - settled task failure adds one captain note and preserves the task record
+  ---
+  duration_ms: 31.5913
+  type: 'test'
+  ...
+# Subtest: settled error queued before newer work is ignored
+ok 9 - settled error queued before newer work is ignored
+  ---
+  duration_ms: 17.0104
+  type: 'test'
+  ...
+# Subtest: report a final error immediately but do not dispatch while the driver is still running
+ok 10 - report a final error immediately but do not dispatch while the driver is still running
+  ---
+  duration_ms: 44.2937
+  type: 'test'
+  ...
+# Subtest: unavailable captain keeps failure notification readable: {"captainOffline":true}
+ok 11 - unavailable captain keeps failure notification readable: {"captainOffline":true}
+  ---
+  duration_ms: 25.0948
+  type: 'test'
+  ...
+# Subtest: unavailable captain keeps failure notification readable: {"rejectDelivery":true}
+ok 12 - unavailable captain keeps failure notification readable: {"rejectDelivery":true}
+  ---
+  duration_ms: 21.0428
+  type: 'test'
+  ...
+# Subtest: a queued error cannot fail a newer attempt created before it gets the team lock
+ok 13 - a queued error cannot fail a newer attempt created before it gets the team lock
+  ---
+  duration_ms: 15.8186
+  type: 'test'
+  ...
+# Subtest: settled failure preserves removed member state and sends no stale report
+ok 14 - settled failure preserves removed member state and sends no stale report
+  ---
+  duration_ms: 13.1011
+  type: 'test'
+  ...
+# Subtest: settled task selection uses activity time rather than task creation order
+ok 15 - settled task selection uses activity time rather than task creation order
+  ---
+  duration_ms: 38.9991
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 406.7
+$ node scripts/quality-gates-tdd.mjs && node --test scripts/quality-gates-repair-scope.test.mjs scripts/quality-gates-amend.test.mjs scripts/quality-gates-reverify.test.mjs scripts/no-progress-recovery.test.mjs scripts/quality-gates-content-bound.test.mjs scripts/quality-gates-work-order.test.mjs scripts/quality-gates-repair-wiring.test.mjs scripts/quality-gates-excluded-scope.test.mjs scripts/quality-gates-surfaces.test.mjs
+quality-gates TDD — A. create contract
+  PASS  tdd.create.work-kind-remains-compatible
+quality-gates TDD — A2. blank optional normalization (#99/#105)
+  PASS  tdd.normalize.blank-optional-fields-to-omitted
+  PASS  tdd.normalize.non-blank-values-untouched
+  PASS  tdd.normalize.retains-invalid-list-item.123
+  PASS  tdd.normalize.retains-invalid-list-item.null
+  PASS  tdd.normalize.retains-invalid-list-item.{"path":"src/private/"}
+  PASS  tdd.create.implementation-requires-objective
+  PASS  tdd.create.implementation-requires-acceptance
+  PASS  tdd.create.implementation-requires-inscope-and-verify
+  PASS  tdd.create.review-requires-reviewed-task
+  PASS  tdd.create.repair-requires-source-and-findings
+  PASS  tdd.create.repair-must-not-depend-on-failed-review
+  PASS  tdd.create.overlapping-inscope-rejects-parallel-ready-tasks
+  PASS  tdd.create.overlapping-inscope-allowed-when-serialized
+  PASS  tdd.create.implementation-blocked-until-requirements-pass
+  PASS  tdd.create.staged-implementation-can-follow-pending-requirements
+  PASS  tdd.create.running-implementation-can-follow-pending-requirements
+  PASS  tdd.create.staged-implementation-must-depend-on-requirements
+quality-gates TDD — B. completion gates
+  PASS  tdd.complete.review-without-verdict-rejected
+  PASS  tdd.complete.review-needs-revision-cannot-complete
+  PASS  tdd.complete.review-pass-requires-no-open-high-findings
+  PASS  tdd.complete.implementation-requires-acceptance-results
+  PASS  tdd.complete.implementation-requires-all-verify-commands
+  PASS  tdd.complete.out-of-scope-path-cannot-complete
+  PASS  tdd.complete.undeclared-path-cannot-complete
+  PASS  tdd.complete.verify-failure-must-fail-task
+  PASS  tdd.complete.claimed-still-cannot-jump-to-completed
+  PASS  tdd.complete.work-kind-keeps-legacy-output-only-complete
+  PASS  tdd.complete.ordered-evidence-tolerates-model-paraphrase
+quality-gates TDD — C. path rules
+  PASS  tdd.scope.file-match
+  PASS  tdd.scope.directory-prefix-match
+  PASS  tdd.scope.out-of-scope-wins
+  PASS  tdd.scope.rejects-parent-escape
+  PASS  tdd.scope.rejects-absolute-path
+  PASS  tdd.scope.default-excludes-env-and-git
+quality-gates TDD — D. auto loop
+  PASS  tdd.loop.needs-revision-creates-repair-and-next-review
+  PASS  tdd.loop.repair-depends-on-source-not-failed-review
+  PASS  tdd.loop.next-review-assigned-to-original-reviewer
+  PASS  tdd.loop.next-review-cannot-be-implementer
+  PASS  tdd.loop.round-increments
+  PASS  tdd.loop.next-review-contract-is-not-a-gate-test
+  PASS  tdd.loop.stops-at-max-review-rounds
+  PASS  tdd.loop.reject-does-not-autoresume
+  PASS  tdd.loop.requirements-needs-revision-opens-next-requirements-round
+  PASS  tdd.loop.repair-skips-captain-assignee
+  PASS  tdd.loop.same-failed-review-does-not-duplicate-follow-up
+  PASS  tdd.plan.default-quality-graph-order
+  PASS  tdd.plan.prompt-explains-staged-full-dag-and-review-rewire
+  PASS  tdd.loop.pending-downstream-rewired-to-new-review-gate
+  PASS  tdd.plan.review-contract-strips-gate-tests
+  PASS  tdd.status.escalated-is-not-halted
+quality-gates TDD — E. halt / resume
+  PASS  tdd.resume.create-task-does-not-unhalt
+  PASS  tdd.resume.explicit-resume-clears-halt
+  PASS  tdd.resume.create-with-resume-reason-unhalts
+  PASS  tdd.resume.cancelled-tasks-stay-cancelled
+  PASS  tdd.resume.missing-reason-rejected
+quality-gates TDD — F. coverage / delivery
+  PASS  tdd.coverage.missing-item-blocks-delivery
+  PASS  tdd.coverage.passed-item-requires-completed-task
+  PASS  tdd.delivery.ok-only-when-all-gates-pass
+  PASS  tdd.delivery.failed-review-without-repair-blocks
+quality-gates TDD — G. persistence / prompts
+  PASS  tdd.state.old-team-json-without-new-fields-still-loads
+  PASS  tdd.state.invalid-verdict-rejected-at-durable-boundary
+  PASS  tdd.prompt.assignment-includes-kind-scope-acceptance
+  PASS  tdd.usage.mentions-explicit-resume-and-verdict
+quality-gates TDD — tool-level closed loop
+  PASS  tdd.create.work-kind-remains-compatible.tool
+  PASS  tdd.create.blank-optional-fields-normalized.tool
+  PASS  tdd.create.team-still-loadable-after-blank-optional.tool
+  PASS  tdd.create.review-blank-reviewedTaskId-rejected.tool
+  PASS  tdd.create.blank-profile-treated-as-omitted.tool
+  PASS  tdd.create.implementation-requires-objective.tool
+  PASS  tdd.resume.create-task-does-not-unhalt.tool
+  PASS  tdd.resume.explicit-resume-clears-halt.tool-exists
+  PASS  tdd.resume.explicit-resume-clears-halt.tool
+quality-gates TDD — H. generated repair scope (#173)
+  PASS  tdd.scope.generated-repair-inScope-has-no-duplicates — ["deploy/compose/postfix/master.cf.inc"]
+  PASS  tdd.scope.generated-repair-drops-outOfScope-covering-its-inScope — ["go.mod"]
+  PASS  tdd.scope.every-generated-repair-inScope-path-is-registrable
+quality-gates TDD checks passed
+TAP version 13
+# Subtest: 窗口与上限是有限的正值
+ok 1 - 窗口与上限是有限的正值
+  ---
+  duration_ms: 1.1151
+  type: 'test'
+  ...
+# Subtest: 同一代未满窗口不回收
+ok 2 - 同一代未满窗口不回收
+  ---
+  duration_ms: 0.2291
+  type: 'test'
+  ...
+# Subtest: 同一代满窗口即回收一次
+ok 3 - 同一代满窗口即回收一次
+  ---
+  duration_ms: 0.2131
+  type: 'test'
+  ...
+# Subtest: 换代后时钟重算：旧窗口不适用于新能力
+ok 4 - 换代后时钟重算：旧窗口不适用于新能力
+  ---
+  duration_ms: 0.1372
+  type: 'test'
+  ...
+# Subtest: 有进展重置窗口：since 更新后不再立即触发
+ok 5 - 有进展重置窗口：since 更新后不再立即触发
+  ---
+  duration_ms: 0.1818
+  type: 'test'
+  ...
+# Subtest: 每代回收次数有上限，超过后交给队长
+ok 6 - 每代回收次数有上限，超过后交给队长
+  ---
+  duration_ms: 0.1176
+  type: 'test'
+  ...
+# Subtest: 没有记录时不回收（冷进程不会凭空轮换）
+ok 7 - 没有记录时不回收（冷进程不会凭空轮换）
+  ---
+  duration_ms: 0.2055
+  type: 'test'
+  ...
+# Subtest: amend fixes an unsatisfiable inScope and records the revision
+ok 8 - amend fixes an unsatisfiable inScope and records the revision
+  ---
+  duration_ms: 4.6274
+  type: 'test'
+  ...
+# Subtest: amended contract is the one the completion gate evaluates
+ok 9 - amended contract is the one the completion gate evaluates
+  ---
+  duration_ms: 1.6195
+  type: 'test'
+  ...
+# Subtest: mid-flight amendments are allowed until a review passes judgment
+ok 10 - mid-flight amendments are allowed until a review passes judgment
+  ---
+  duration_ms: 0.3791
+  type: 'test'
+  ...
+# Subtest: requirements passing judgment also freezes the contract
+ok 11 - requirements passing judgment also freezes the contract
+  ---
+  duration_ms: 0.3997
+  type: 'test'
+  ...
+# Subtest: terminal tasks and work tasks have nothing amendable
+ok 12 - terminal tasks and work tasks have nothing amendable
+  ---
+  duration_ms: 0.2316
+  type: 'test'
+  ...
+# Subtest: amendment requires a reason, an author, and at least one contract field
+ok 13 - amendment requires a reason, an author, and at least one contract field
+  ---
+  duration_ms: 0.1868
+  type: 'test'
+  ...
+# Subtest: replacement values must be well-formed: non-empty strings, non-empty lists, workspace-relative paths
+ok 14 - replacement values must be well-formed: non-empty strings, non-empty lists, workspace-relative paths
+  ---
+  duration_ms: 0.4445
+  type: 'test'
+  ...
+# Subtest: revisions accumulate; previous values always snapshot the immediately prior contract
+ok 15 - revisions accumulate; previous values always snapshot the immediately prior contract
+  ---
+  duration_ms: 0.2749
+  type: 'test'
+  ...
+# Subtest: durable-state validation accepts well-formed revisions and rejects malformed ones
+ok 16 - durable-state validation accepts well-formed revisions and rejects malformed ones
+  ---
+  duration_ms: 0.8131
+  type: 'test'
+  ...
+# Subtest: \#161 (original case): editing and deleting reviewed bytes after the pass must stop the deliverable claim
+ok 17 - \#161 (original case): editing and deleting reviewed bytes after the pass must stop the deliverable claim
+  ---
+  duration_ms: 58.1209
+  type: 'test'
+  ...
+# Subtest: \#161 (original case): the loop banner must not stay green over changed bytes
+ok 18 - \#161 (original case): the loop banner must not stay green over changed bytes
+  ---
+  duration_ms: 22.1239
+  type: 'test'
+  ...
+# Subtest: \#161 (recorded revision): a pass that recorded the bytes it judged is invalidated by any byte change
+ok 19 - \#161 (recorded revision): a pass that recorded the bytes it judged is invalidated by any byte change
+  ---
+  duration_ms: 21.4332
+  type: 'test'
+  ...
+# Subtest: \#161: an identical rewrite is not drift, a real deletion is
+ok 20 - \#161: an identical rewrite is not drift, a real deletion is
+  ---
+  duration_ms: 10.5427
+  type: 'test'
+  ...
+# Subtest: \#161: re-attempting the reviewed task invalidates the pass without needing any hashing
+ok 21 - \#161: re-attempting the reviewed task invalidates the pass without needing any hashing
+  ---
+  duration_ms: 0.3858
+  type: 'test'
+  ...
+# Subtest: \#161: an intermediate verification that drifted is surfaced without false-blocking the newer review
+ok 22 - \#161: an intermediate verification that drifted is surfaced without false-blocking the newer review
+  ---
+  duration_ms: 21.0487
+  type: 'test'
+  ...
+# Subtest: \#161: a work-kind task without a review is still not deliverable
+ok 23 - \#161: a work-kind task without a review is still not deliverable
+  ---
+  duration_ms: 0.3028
+  type: 'test'
+  ...
+# Subtest: \#161: a review that ran while its inputs were changing must not claim the current bytes
+ok 24 - \#161: a review that ran while its inputs were changing must not claim the current bytes
+  ---
+  duration_ms: 9.3604
+  type: 'test'
+  ...
+# Subtest: \#161: the claim-time snapshot and the close-time bytes decide what a verdict may bind
+ok 25 - \#161: the claim-time snapshot and the close-time bytes decide what a verdict may bind
+  ---
+  duration_ms: 12.7526
+  type: 'test'
+  ...
+# Subtest: \#161: a legitimate later repair and new pass supersede the old pass instead of blocking forever
+ok 26 - \#161: a legitimate later repair and new pass supersede the old pass instead of blocking forever
+  ---
+  duration_ms: 18.9315
+  type: 'test'
+  ...
+# Subtest: \#161: a new file under a reviewed directory scope was never reviewed
+ok 27 - \#161: a new file under a reviewed directory scope was never reviewed
+  ---
+  duration_ms: 20.4306
+  type: 'test'
+  ...
+# Subtest: \#161: an unreadable reviewed file cannot be claimed as unchanged
+ok 28 - \#161: an unreadable reviewed file cannot be claimed as unchanged
+  ---
+  duration_ms: 8.79
+  type: 'test'
+  ...
+# Subtest: \#183: derived repair scope drops paths the completion gate classifies out_of_scope
+ok 29 - \#183: derived repair scope drops paths the completion gate classifies out_of_scope
+  ---
+  duration_ms: 2.5837
+  type: 'test'
+  ...
+# Subtest: \#183: .env.example and secrets/ findings never produce an unsatisfiable inScope entry
+ok 30 - \#183: .env.example and secrets/ findings never produce an unsatisfiable inScope entry
+  ---
+  duration_ms: 1.6719
+  type: 'test'
+  ...
+# Subtest: \#183: a repair round whose only cited targets are default-excluded escalates instead of dead-locking
+ok 31 - \#183: a repair round whose only cited targets are default-excluded escalates instead of dead-locking
+  ---
+  duration_ms: 1.5459
+  type: 'test'
+  ...
+# Subtest: \#183: a mixed round keeps the legal target and records the excluded finding for the user
+ok 32 - \#183: a mixed round keeps the legal target and records the excluded finding for the user
+  ---
+  duration_ms: 1.5597
+  type: 'test'
+  ...
+# Subtest: \#183: the completion gate itself still refuses default-excluded paths (unchanged invariant)
+ok 33 - \#183: the completion gate itself still refuses default-excluded paths (unchanged invariant)
+  ---
+  duration_ms: 0.3102
+  type: 'test'
+  ...
+# Subtest: repair scope includes the fix target named in requiredFix, not just the observed file
+ok 34 - repair scope includes the fix target named in requiredFix, not just the observed file
+  ---
+  duration_ms: 2.6518
+  type: 'test'
+  ...
+# Subtest: repair scope drops absolute paths that can never match workspace-relative patterns
+ok 35 - repair scope drops absolute paths that can never match workspace-relative patterns
+  ---
+  duration_ms: 1.0637
+  type: 'test'
+  ...
+# Subtest: repair scope falls back to the source inScope when findings name nothing legal
+ok 36 - repair scope falls back to the source inScope when findings name nothing legal
+  ---
+  duration_ms: 0.2059
+  type: 'test'
+  ...
+# Subtest: line-number suffixes are stripped from derived paths
+ok 37 - line-number suffixes are stripped from derived paths
+  ---
+  duration_ms: 0.1844
+  type: 'test'
+  ...
+# Subtest: end-to-end: generated repair round is satisfiable for the incident shape
+ok 38 - end-to-end: generated repair round is satisfiable for the incident shape
+  ---
+  duration_ms: 1.7664
+  type: 'test'
+  ...
+# Subtest: generated repair is completable: real F_DOC incident
+ok 39 - generated repair is completable: real F_DOC incident
+  ---
+  duration_ms: 1.2704
+  type: 'test'
+  ...
+# Subtest: generated repair is completable: directory exclusion covers observed and required paths
+ok 40 - generated repair is completable: directory exclusion covers observed and required paths
+  ---
+  duration_ms: 0.4345
+  type: 'test'
+  ...
+# Subtest: generated repair is completable: fallback scope has duplicates and overlapping exclusions
+ok 41 - generated repair is completable: fallback scope has duplicates and overlapping exclusions
+  ---
+  duration_ms: 0.3838
+  type: 'test'
+  ...
+# Subtest: \#175A: a generated repair records the failed gate whose findings it fixes
+ok 42 - \#175A: a generated repair records the failed gate whose findings it fixes
+  ---
+  duration_ms: 4.548
+  type: 'test'
+  ...
+# Subtest: \#175A: a failed gate cannot be a dependency edge, or the repair could never be claimed
+ok 43 - \#175A: a failed gate cannot be a dependency edge, or the repair could never be claimed
+  ---
+  duration_ms: 0.4885
+  type: 'test'
+  ...
+# Subtest: \#175A: delivery does not report a false "failed without a follow-up repair" for a fixed verification
+ok 44 - \#175A: delivery does not report a false "failed without a follow-up repair" for a fixed verification
+  ---
+  duration_ms: 1.3309
+  type: 'test'
+  ...
+# Subtest: \#175B: a failed verification produces a repair + re-check round automatically
+ok 45 - \#175B: a failed verification produces a repair + re-check round automatically
+  ---
+  duration_ms: 0.5656
+  type: 'test'
+  ...
+# Subtest: \#175B: the verification re-check is not a review and carries the same verify commands
+ok 46 - \#175B: the verification re-check is not a review and carries the same verify commands
+  ---
+  duration_ms: 0.2784
+  type: 'test'
+  ...
+# Subtest: \#175B: a failed verification still respects the repair ceiling
+ok 47 - \#175B: a failed verification still respects the repair ceiling
+  ---
+  duration_ms: 0.2357
+  type: 'test'
+  ...
+# Subtest: \#175: a failed review whose findings were fixed stays closed in the delivery graph
+ok 48 - \#175: a failed review whose findings were fixed stays closed in the delivery graph
+  ---
+  duration_ms: 0.3083
+  type: 'test'
+  ...
+# Subtest: 重跑失败命令可以清掉早期失败：只有最新一次观察作数
+ok 49 - 重跑失败命令可以清掉早期失败：只有最新一次观察作数
+  ---
+  duration_ms: 2.0468
+  type: 'test'
+  ...
+# Subtest: 最新一次仍是失败就不许完成
+ok 50 - 最新一次仍是失败就不许完成
+  ---
+  duration_ms: 0.397
+  type: 'test'
+  ...
+# Subtest: 丢掉失败条目不能骗过覆盖检查：命令仍须逐条有结果
+ok 51 - 丢掉失败条目不能骗过覆盖检查：命令仍须逐条有结果
+  ---
+  duration_ms: 0.1791
+  type: 'test'
+  ...
+# Subtest: 上一代（不同 attemptId）记录的通过不能带当前能力完成
+ok 52 - 上一代（不同 attemptId）记录的通过不能带当前能力完成
+  ---
+  duration_ms: 0.1653
+  type: 'test'
+  ...
+# Subtest: 本代自带证据时不受旧戳影响
+ok 53 - 本代自带证据时不受旧戳影响
+  ---
+  duration_ms: 0.3381
+  type: 'test'
+  ...
+# Subtest: 无戳的历史任务保持可读可完成（兼容旧 team.json）
+ok 54 - 无戳的历史任务保持可读可完成（兼容旧 team.json）
+  ---
+  duration_ms: 0.209
+  type: 'test'
+  ...
+# Subtest: review 类：上一代记录的 verdict 不能带当前能力完成
+ok 55 - review 类：上一代记录的 verdict 不能带当前能力完成
+  ---
+  duration_ms: 0.2182
+  type: 'test'
+  ...
+# Subtest: claim/close persist byte identity; status and panel both reject later edits
+ok 56 - claim/close persist byte identity; status and panel both reject later edits
+  ---
+  duration_ms: 118.8156
+  type: 'test'
+  ...
+# Subtest: changes between real claim and close retain reviewedDuringDrift
+ok 57 - changes between real claim and close retain reviewedDuringDrift
+  ---
+  duration_ms: 233.8007
+  type: 'test'
+  ...
+# Subtest: an empty reviewed directory remains bound and later additions block delivery
+ok 58 - an empty reviewed directory remains bound and later additions block delivery
+  ---
+  duration_ms: 88.7616
+  type: 'test'
+  ...
+# Subtest: reviewed task generation changing during review invalidates even identical bytes
+ok 59 - reviewed task generation changing during review invalidates even identical bytes
+  ---
+  duration_ms: 72.5772
+  type: 'test'
+  ...
+# Subtest: tool failure creates a causal repair snapshot and rewires pending integration
+ok 60 - tool failure creates a causal repair snapshot and rewires pending integration
+  ---
+  duration_ms: 73.1788
+  type: 'test'
+  ...
+# Subtest: shared requirements do not make unrelated implementations supersede each other
+ok 61 - shared requirements do not make unrelated implementations supersede each other
+  ---
+  duration_ms: 0.7353
+  type: 'test'
+  ...
+# Subtest: an unbound later pass and a partial repair cannot erase unmatched old byte evidence
+ok 62 - an unbound later pass and a partial repair cannot erase unmatched old byte evidence
+  ---
+  duration_ms: 0.3211
+  type: 'test'
+  ...
+# Subtest: verification recheck retains its own commands and generated repair satisfies the canonical contract
+ok 63 - verification recheck retains its own commands and generated repair satisfies the canonical contract
+  ---
+  duration_ms: 0.8668
+  type: 'test'
+  ...
+# Subtest: one finding requiring both an allowed target and an excluded target is escalated whole
+ok 64 - one finding requiring both an allowed target and an excluded target is escalated whole
+  ---
+  duration_ms: 0.6083
+  type: 'test'
+  ...
+# Subtest: separate reviewed scopes below the cap remain auditable above 200 total files
+ok 65 - separate reviewed scopes below the cap remain auditable above 200 total files
+  ---
+  duration_ms: 889.5542
+  type: 'test'
+  ...
+# Subtest: repair of another review on the same implementation does not close a fresh failed gate
+ok 66 - repair of another review on the same implementation does not close a fresh failed gate
+  ---
+  duration_ms: 0.419
+  type: 'test'
+  ...
+# Subtest: content-bound delivery requires a current workspace audit
+ok 67 - content-bound delivery requires a current workspace audit
+  ---
+  duration_ms: 0.1146
+  type: 'test'
+  ...
+# Subtest: different failed verification gates with no findings do not deduplicate each other
+ok 68 - different failed verification gates with no findings do not deduplicate each other
+  ---
+  duration_ms: 0.2781
+  type: 'test'
+  ...
+# Subtest: reused finding ids in another artifact lineage never close this gate
+ok 69 - reused finding ids in another artifact lineage never close this gate
+  ---
+  duration_ms: 0.1466
+  type: 'test'
+  ...
+# Subtest: \#174 (original case): generated acceptance must not assert a line number that drifts
+ok 70 - \#174 (original case): generated acceptance must not assert a line number that drifts
+  ---
+  duration_ms: 2.0589
+  type: 'test'
+  ...
+# Subtest: \#174 (original case): the repair records the failed gate whose findings it fixes
+ok 71 - \#174 (original case): the repair records the failed gate whose findings it fixes
+  ---
+  duration_ms: 0.6435
+  type: 'test'
+  ...
+# Subtest: \#174 (original case): the work order must be flagged once a cited file changes underneath it
+ok 72 - \#174 (original case): the work order must be flagged once a cited file changes underneath it
+  ---
+  duration_ms: 41.1938
+  type: 'test'
+  ...
+# Subtest: \#174 (original case): the generated description states the plugin did not verify the finding
+ok 73 - \#174 (original case): the generated description states the plugin did not verify the finding
+  ---
+  duration_ms: 0.4309
+  type: 'test'
+  ...
+# Subtest: \#174: the generated work order records a real workspace snapshot
+ok 74 - \#174: the generated work order records a real workspace snapshot
+  ---
+  duration_ms: 6.7657
+  type: 'test'
+  ...
+# Subtest: \#174: digests are real bytes; a missing path is recorded as absent, not skipped
+ok 75 - \#174: digests are real bytes; a missing path is recorded as absent, not skipped
+  ---
+  duration_ms: 14.2968
+  type: 'test'
+  ...
+# Subtest: \#174: a path absent at generation time becoming present is drift
+ok 76 - \#174: a path absent at generation time becoming present is drift
+  ---
+  duration_ms: 7.3061
+  type: 'test'
+  ...
+# Subtest: \#174: a deleted cited file is reported and a completed order is not
+ok 77 - \#174: a deleted cited file is reported and a completed order is not
+  ---
+  duration_ms: 8.1708
+  type: 'test'
+  ...
+# Subtest: \#174: a directory scope expands to the real files it covers
+ok 78 - \#174: a directory scope expands to the real files it covers
+  ---
+  duration_ms: 7.5868
+  type: 'test'
+  ...
+# Subtest: \#174: a broad scope must not absorb secrets, .env or plugin state
+ok 79 - \#174: a broad scope must not absorb secrets, .env or plugin state
+  ---
+  duration_ms: 18.692
+  type: 'test'
+  ...
+# Subtest: \#174: illegal scope patterns are rejected, never widened to the workspace root
+ok 80 - \#174: illegal scope patterns are rejected, never widened to the workspace root
+  ---
+  duration_ms: 6.2918
+  type: 'test'
+  ...
+# Subtest: \#174: traversal never follows a symlink out of the workspace or into a cycle
+ok 81 - \#174: traversal never follows a symlink out of the workspace or into a cycle
+  ---
+  duration_ms: 23.0348
+  type: 'test'
+  ...
+# Subtest: \#174: hitting the expansion cap is reported, not silently truncated
+ok 82 - \#174: hitting the expansion cap is reported, not silently truncated
+  ---
+  duration_ms: 501.1093
+  type: 'test'
+  ...
+# Subtest: \#174: an unreadable path is reported as unreadable, never as unchanged or absent
+ok 83 - \#174: an unreadable path is reported as unreadable, never as unchanged or absent # SKIP POSIX permission probe
+  ---
+  duration_ms: 0.0671
+  type: 'test'
+  ...
+# Subtest: \#174: a capped scope is incomplete evidence and never passes as full coverage
+ok 84 - \#174: a capped scope is incomplete evidence and never passes as full coverage
+  ---
+  duration_ms: 406.609
+  type: 'test'
+  ...
+# Subtest: \#174/\#161: a large artifact is hashed in constant memory (no whole-file read)
+ok 85 - \#174/\#161: a large artifact is hashed in constant memory (no whole-file read)
+  ---
+  duration_ms: 83.2709
+  type: 'test'
+  ...
+# Subtest: \#174/\#161: the production audit carries current gaps, and an over-cap scope blocks delivery
+ok 86 - \#174/\#161: the production audit carries current gaps, and an over-cap scope blocks delivery
+  ---
+  duration_ms: 757.464
+  type: 'test'
+  ...
+# Subtest: \#161: an unreadable current artifact makes the production audit incomplete and blocks delivery
+ok 87 - \#161: an unreadable current artifact makes the production audit incomplete and blocks delivery # SKIP POSIX permission probe
+  ---
+  duration_ms: 0.0803
+  type: 'test'
+  ...
+1..87
+# tests 87
+# suites 0
+# pass 85
+# fail 0
+# cancelled 0
+# skipped 2
+# todo 0
+# duration_ms 2344.509
+TAP version 13
+# Subtest: 三服务任一缺失 → available:false 并列出缺席服务
+ok 1 - 三服务任一缺失 → available:false 并列出缺席服务
+  ---
+  duration_ms: 1.4022
+  type: 'test'
+  ...
+# Subtest: 服务在但最小方法集不全 → 整体回落，且与"缺席"分开报告
+ok 2 - 服务在但最小方法集不全 → 整体回落，且与"缺席"分开报告
+  ---
+  duration_ms: 0.4002
+  type: 'test'
+  ...
+# Subtest: 回归：agency-agents 1.0.11 的真实形状（异步 snapshot/get/catalog、persona 返回 {prompt}）
+ok 3 - 回归：agency-agents 1.0.11 的真实形状（异步 snapshot/get/catalog、persona 返回 {prompt}）
+  ---
+  duration_ms: 1.0934
+  type: 'test'
+  ...
+# Subtest: loadAgencyTeam 服务缺席时给出可读原因且不抛错
+ok 4 - loadAgencyTeam 服务缺席时给出可读原因且不抛错
+  ---
+  duration_ms: 0.2304
+  type: 'test'
+  ...
+# Subtest: inject 数组与源码均不声明任何 agency 服务
+ok 5 - inject 数组与源码均不声明任何 agency 服务
+  ---
+  duration_ms: 22.9118
+  type: 'test'
+  ...
+# Subtest: 按 id 或 name 都能取到团队
+ok 6 - 按 id 或 name 都能取到团队
+  ---
+  duration_ms: 0.3259
+  type: 'test'
+  ...
+# Subtest: team 不存在 → 报错并列出可用 id（不静默回落）
+ok 7 - team 不存在 → 报错并列出可用 id（不静默回落）
+  ---
+  duration_ms: 0.2651
+  type: 'test'
+  ...
+# Subtest: 成员装配：name=expertSlug、路由三字段留空、executionPrompt 三段合成
+ok 8 - 成员装配：name=expertSlug、路由三字段留空、executionPrompt 三段合成
+  ---
+  duration_ms: 0.4201
+  type: 'test'
+  ...
+# Subtest: 重复 expertSlug → -2 后缀 + diagnostics，persona 仍按原 slug 读
+ok 9 - 重复 expertSlug → -2 后缀 + diagnostics，persona 仍按原 slug 读
+  ---
+  duration_ms: 0.5303
+  type: 'test'
+  ...
+# Subtest: persona 缺失 → duty + instructions 兜底并记 diagnostics
+ok 10 - persona 缺失 → duty + instructions 兜底并记 diagnostics
+  ---
+  duration_ms: 0.4917
+  type: 'test'
+  ...
+# Subtest: persona 超 8000 字符 → 截断并记 diagnostics
+ok 11 - persona 超 8000 字符 → 截断并记 diagnostics
+  ---
+  duration_ms: 0.4169
+  type: 'test'
+  ...
+# Subtest: 阵容超 maxMembers → 明确报错，不静默截断
+ok 12 - 阵容超 maxMembers → 明确报错，不静默截断
+  ---
+  duration_ms: 0.2385
+  type: 'test'
+  ...
+# Subtest: locale 缺省回落到 zh，客户端有值时用客户端值
+ok 13 - locale 缺省回落到 zh，客户端有值时用客户端值
+  ---
+  duration_ms: 0.2612
+  type: 'test'
+  ...
+# Subtest: composeExecutionPrompt 缺段即省略，不补占位符
+ok 14 - composeExecutionPrompt 缺段即省略，不补占位符
+  ---
+  duration_ms: 0.0764
+  type: 'test'
+  ...
+# Subtest: 冲突矩阵：×profile 报错 / ×plan.members 报错 / ×plan.tasks 允许
+ok 15 - 冲突矩阵：×profile 报错 / ×plan.members 报错 / ×plan.tasks 允许
+  ---
+  duration_ms: 0.1739
+  type: 'test'
+  ...
+# Subtest: plan.tasks 与 agencyTeam 共存时被标准化（路由意图 + 拓扑排序 + 环检测）
+ok 16 - plan.tasks 与 agencyTeam 共存时被标准化（路由意图 + 拓扑排序 + 环检测）
+  ---
+  duration_ms: 0.9326
+  type: 'test'
+  ...
+# Subtest: --agency 斜杠入口解析成型，与 --profile 互斥
+ok 17 - --agency 斜杠入口解析成型，与 --profile 互斥
+  ---
+  duration_ms: 0.5619
+  type: 'test'
+  ...
+# Subtest: 服务全缺时既有工具与 usage 段无回归
+ok 18 - 服务全缺时既有工具与 usage 段无回归
+  ---
+  duration_ms: 6.7687
+  type: 'test'
+  ...
+# Subtest: 回归：两条创建路径共用同一个「解析成员线路 → 校验」冻结循环（且不被 staged 分支包住）
+ok 19 - 回归：两条创建路径共用同一个「解析成员线路 → 校验」冻结循环（且不被 staged 分支包住）
+  ---
+  duration_ms: 4.6723
+  type: 'test'
+  ...
+# Subtest: 队员级专家：完整清单保留 disabled，个人服务不依赖 teams，发现阶段零 persona 读取
+ok 20 - 队员级专家：完整清单保留 disabled，个人服务不依赖 teams，发现阶段零 persona 读取
+  ---
+  duration_ms: 0.9465
+  type: 'test'
+  ...
+# Subtest: 队员级专家：完整清单在缺服务、错形状和 catalog 调用失败时返回不可用
+ok 21 - 队员级专家：完整清单在缺服务、错形状和 catalog 调用失败时返回不可用
+  ---
+  duration_ms: 0.407
+  type: 'test'
+  ...
+# Subtest: 队员级专家：可选解析未选择、unknown、disabled 时静默回落且不取 persona
+ok 22 - 队员级专家：可选解析未选择、unknown、disabled 时静默回落且不取 persona
+  ---
+  duration_ms: 0.4034
+  type: 'test'
+  ...
+# Subtest: 队员级专家：可选解析缺服务、调用错误、缺 persona 均静默 undefined 且无日志
+ok 23 - 队员级专家：可选解析缺服务、调用错误、缺 persona 均静默 undefined 且无日志
+  ---
+  duration_ms: 0.8625
+  type: 'test'
+  ...
+# Subtest: 队员级专家：一次明确 slug 仅取该 persona，保留 locale、长度上限和服务 this
+ok 24 - 队员级专家：一次明确 slug 仅取该 persona，保留 locale、长度上限和服务 this
+  ---
+  duration_ms: 0.6041
+  type: 'test'
+  ...
+# Subtest: 队员级专家：只读清单只列已启用项，服务缺席时给出原因而不是抛错
+ok 25 - 队员级专家：只读清单只列已启用项，服务缺席时给出原因而不是抛错
+  ---
+  duration_ms: 0.306
+  type: 'test'
+  ...
+# Subtest: 队员级专家：单个队员按需挂 persona，未启用/不存在/缺正文都明确拒绝
+ok 26 - 队员级专家：单个队员按需挂 persona，未启用/不存在/缺正文都明确拒绝
+  ---
+  duration_ms: 0.3859
+  type: 'test'
+  ...
+# Subtest: complete expert directory is metadata-only; creation freezes one enabled selection and reuse does not reload it
+ok 27 - complete expert directory is metadata-only; creation freezes one enabled selection and reuse does not reload it
+  ---
+  duration_ms: 63.9221
+  type: 'test'
+  ...
+# Subtest: disabled, missing and unavailable expert selections silently create ordinary members
+ok 28 - disabled, missing and unavailable expert selections silently create ordinary members
+  ---
+  duration_ms: 68.9492
+  type: 'test'
+  ...
+# Subtest: inline member rows resolve individual experts independently without a whole agency roster
+ok 29 - inline member rows resolve individual experts independently without a whole agency roster
+  ---
+  duration_ms: 23.56
+  type: 'test'
+  ...
+1..29
+# tests 29
+# suites 0
+# pass 29
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 464.6679
+dsh-agent-teams lifecycle verification
+  PASS  slash command registers as /agent-teams
+  PASS  slash command advertises an input hint for the menu placeholder
+  PASS  configured profile registers a concise dedicated slash command
+  PASS  unsafe profile names do not generate ambiguous commands
+  PASS  bare /agent-teams reports usage instead of activating
+  PASS  argued /agent-teams queues one visible user turn
+  PASS  slash command preserves the exact submitted line as user-authored chat
+  PASS  preserved slash command still activates through the gesture boundary
+  PASS  activation directive names the protocol
+  PASS  profile command queues a visible profile-specific user turn
+  PASS  gesture recognizes a leading /agent-teams token
+  PASS  profile command gesture selects its configured profile and goal
+  PASS  bare profile command gesture asks for the goal
+  PASS  unknown profile command stays ordinary prose
+  PASS  bare gesture yields an empty goal
+  PASS  mid-sentence mention stays ordinary prose
+  PASS  non-user sources cannot forge the gesture
+  PASS  latest user gesture wins in a batch
+  PASS  slash --profile without a goal still activates
+  PASS  profile-only activation asks for the goal
+  PASS  captain-planning activation requires a staged user-reviewed graph
+  PASS  unknown slash profile reports error and does not followup
+  PASS  leading ordinary token is never treated as a profile
+  PASS  command getter sees HMR profile names
+  PASS  create(profile) returns profile members tasks and seed ids
+  PASS  create(profile) persists snapshot members and mapped dependencies
+  PASS  dependency-blocked roster does not spawn a model session
+  PASS  first-stage seed is assigned only to the configured member
+  PASS  first assignment includes team goal and protocol
+  PASS  failed upstream does not unlock the next configured stage
+  PASS  completed upstream dispatches the configured downstream assignee
+  PASS  downstream assignment includes dependency output and seed id
+  PASS  unread mailbox prevents a same-kick new assignment
+  PASS  status exposes profile snapshot and task seed ids
+  PASS  discarding a staged plan archives it without spawning or dispatching
+  PASS  discard aborts the active Captain turn and parks an authoritative no-recreate context
+  PASS  captain-planning create stages only the configured roster
+  PASS  staged roster and DAG are editable without spawning or dispatching
+  PASS  invalid staged plan batches fail atomically without a partial write
+  PASS  return-to-chat cancels the planning turn and asks one question without recreating the team
+  PASS  return-to-chat is idempotent while feedback is already pending
+  PASS  captain can revise the staged DAG and roster through one model-facing atomic tool
+  PASS  running never-started tasks can be corrected without replacing the DAG
+  PASS  invalid running plan batches preserve the entire previous graph
+  PASS  running edits reject active attempts, cycles and roster changes: {"action":"update_task","task_id":"t1","subject":"do not overwrite active work"}
+  PASS  running edits reject active attempts, cycles and roster changes: {"action":"update_task","task_id":"t2","dependencies":["t2"]}
+  PASS  running edits reject active attempts, cycles and roster changes: {"action":"remove_member","member_name":"implementer"}
+  PASS  captain can cancel dependency-blocked member work before its first attempt
+  PASS  approval starts only dependency-ready members
+  PASS  approved plan dispatches only after a spawned member becomes idle
+  PASS  captain halt cancels the approved graph and keeps the team
+  PASS  team halt cancels the captain turn while preserving queued user input
+  PASS  captain halt drains active members and leaves blocked members unspawned
+  PASS  halted team does not redispatch cancelled graph
+  PASS  halted create_task does not silently resume
+  PASS  explicit resume clears halt and keeps cancelled tasks cancelled
+  PASS  shutdown preserves cancelled task history in the archive
+  PASS  quality implementation without contract is rejected
+  PASS  missing attempt_id is a correctable parameter error, not a revoked attempt
+  PASS  missing attempt_id is a correctable parameter error, not a revoked attempt
+  PASS  illegal completed without acceptance evidence is rejected
+  PASS  issue159 terminal evidence is durable and duplicate submissions are idempotent
+  PASS  issue159 supplementary evidence preserves the original result and completion timestamp
+  PASS  issue159 captain supplements terminal member work without takeover
+  PASS  issue159 supplemental evidence is visible in status
+  PASS  issue159 stale capabilities cannot append terminal evidence
+  PASS  issue159 identical report retries reuse one durable message
+  PASS  issue159 teammates cannot supplement another owners terminal work
+  PASS  issue159 stale explicit reports are rejected before entering the mailbox
+  PASS  review needs_revision cannot complete
+  PASS  issue159 automatic repair creation notifies the captain
+  PASS  needs_revision opens repair and next review
+  PASS  adding members alone creates no child sessions
+  PASS  manually added members persist the global fallback for later activations
+  PASS  idle assigned member is claimed and woken automatically
+  PASS  captain cannot mint a claim capability for a member; use reassign_task
+  PASS  member observes the scheduler attempt idempotently
+  PASS  dependency gate stays pending before both branches complete
+  PASS  rate-limited idle owner does not enter an unbounded retry loop (#66)
+  PASS  disposed settled owner keeps its parked attempt across repeated scheduler kicks
+  PASS  idle assigned gamma is claimed for the recovery-failure fixture
+  PASS  issue159 failed recovery restores partial evidence with the original capability
+  PASS  failed unobserved recovery restores the original capability and later kicks do not recast it
+  PASS  restored capability remains usable after a failed recovery delivery
+  PASS  unobserved missing owner recovers once and repeated kicks do not rotate it again
+  PASS  captain message resumes a parked owner without rotating its attempt
+  PASS  captain cannot bypass the safe takeover protocol
+  PASS  reassignment quiesces recovered owner and creates a new attempt
+  PASS  old member cannot publish a late takeover result
+  PASS  resumed recovered member completes with its throttled capability
+  PASS  completing dependencies dispatches the downstream task before member execution
+  PASS  previously interrupted member is reused in a later round
+  PASS  a member cannot claim a second unfinished task
+  PASS  removing a member revokes and redispatches its unfinished task
+  PASS  removing a member preserves its catalog entry for transcript history
+  PASS  removing a member blocks direct followup before resume
+  PASS  removed member loses participant authorization
+  PASS  failed live message remains one unread durable fallback
+  PASS  status kick accepts fallback without inventing consumption
+  PASS  recipient status acknowledges the complete fallback actually displayed
+  PASS  concurrent claims serialize to exactly one owner
+  PASS  terminal output is immutable against late overwrite
+  PASS  captain takeover owns a fresh attempt and rejects the old member
+  PASS  parallel captain takeovers allow exactly one active captain task
+  PASS  unfinished captain takeover returns to a member when the captain becomes idle
+  PASS  activity refines residency through the live Agent registry
+  PASS  team shutdown archives the complete durable record
+  PASS  archived activity keeps every member after shutdown
+  PASS  archived activity projects each member model onto assigned tasks
+  PASS  team shutdown keeps retired members catalog-visible for historical transcripts
+  PASS  team shutdown blocks storage-only member cold resume
+  PASS  team shutdown leaves unrelated continuable subagents untouched
+  PASS  team shutdown leaves unrelated continuable followup untouched
+  PASS  invalid roster approval rejects before any member session is created
+  PASS  same-name team can be recreated and archived again
+  PASS  request failure alone leaves the attempt open for Harness recovery
+  PASS  turn failure fails the open attempt, releases the member, and owns no retry
+  PASS  turn failure notifies the captain mailbox with the error code
+  PASS  settled member discards failed-attempt guidance without another model turn
+  PASS  invalid batch plan is rejected without any state or session side effect
+  PASS  one atomic call creates the full roster and resolves forward dependency references
+  PASS  ordinary pending work cannot be reported deliverable
+  PASS  claim exposes the complete task contract without reading team files
+  PASS  failed teardown keeps reassignment fenced and does not launch a new generation
+  PASS  the same failed handoff can be retried safely
+  PASS  failed member drain never reports a successful archive
+  PASS  archive retries drain previously removed roster rows
+
+all lifecycle checks passed
+dsh-agent-teams complex stress verification
+  PASS  first wave assigns all eight roots to eight distinct members
+  PASS  captain takeover and member removal serialize without losing either mutation
+  PASS  50 stale/removed-owner writes are rejected during continued scheduling
+  PASS  interrupted alpha is reused while the 31-node DAG keeps advancing
+  PASS  second independent takeover advances exactly one execution attempt
+  PASS  cold runtime restart redelivers every durable open task with a fresh attempt
+  PASS  all pre-restart attempt writes are rejected after cold recovery
+  PASS  second interrupted owner is reused after takeover
+  PASS  entire fan-out/fan-in graph reaches completion after restart
+  PASS  seven-way thundering herd produces exactly one owner
+  PASS  40 conflicting terminal writes cannot change the canonical result
+  PASS  message burst contains both injected fallbacks and live deliveries
+  PASS  all failed message fallbacks are redelivered and acknowledged exactly once
+  PASS  final state has no duplicate current capability ids
+  PASS  removed beta owns no unfinished or future task
+  PASS  no task is lost, duplicated, or left nonterminal
+  PASS  shutdown archives all 38 completed tasks after fault recovery
+  PASS  shutdown keeps all eight retired members catalog-visible for history
+
+all complex stress checks passed
+TAP version 13
+# Subtest: retry cannot complete using evidence or verdict from the previous attempt
+ok 1 - retry cannot complete using evidence or verdict from the previous attempt
+  ---
+  duration_ms: 1.1752
+  type: 'test'
+  ...
+# Subtest: source attempt revocation invalidates queued reports, including captain reports
+ok 2 - source attempt revocation invalidates queued reports, including captain reports
+  ---
+  duration_ms: 0.1827
+  type: 'test'
+  ...
+# Subtest: captain cannot create a duplicate repair for the same unresolved findings
+ok 3 - captain cannot create a duplicate repair for the same unresolved findings
+  ---
+  duration_ms: 0.4679
+  type: 'test'
+  ...
+# Subtest: a queued progress message is superseded by a terminal result, but the actual terminal report survives
+ok 4 - a queued progress message is superseded by a terminal result, but the actual terminal report survives
+  ---
+  duration_ms: 0.127
+  type: 'test'
+  ...
+# Subtest: supplements retain author, attempt and old result without reopening a failed gate
+ok 5 - supplements retain author, attempt and old result without reopening a failed gate
+  ---
+  duration_ms: 8.7909
+  type: 'test'
+  ...
+# Subtest: terminal immutable fields cannot be silently changed even with unchanged status/output
+ok 6 - terminal immutable fields cannot be silently changed even with unchanged status/output
+  ---
+  duration_ms: 0.5977
+  type: 'test'
+  ...
+# Subtest: retry preserves attributed historical supplements but does not reuse them as gate evidence
+ok 7 - retry preserves attributed historical supplements but does not reuse them as gate evidence
+  ---
+  duration_ms: 0.3361
+  type: 'test'
+  ...
+# Subtest: malformed persisted supplements are rejected
+ok 8 - malformed persisted supplements are rejected
+  ---
+  duration_ms: 0.2409
+  type: 'test'
+  ...
+# Subtest: durable mailbox fallback discards revoked source reports for captain and peers
+ok 9 - durable mailbox fallback discards revoked source reports for captain and peers
+  ---
+  duration_ms: 71.8388
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 343.1202
+$ node --test scripts/corrupt-teamjson.test.mjs
+TAP version 13
+# Subtest: A1: corrupt team.json degrades mailbox admission to plain pass-through instead of escaping the pre-step hook
+ok 1 - A1: corrupt team.json degrades mailbox admission to plain pass-through instead of escaping the pre-step hook
+  ---
+  duration_ms: 20.54
+  type: 'test'
+  ...
+# Subtest: A2: valid team.json keeps mailbox admission working on the same hook path
+ok 2 - A2: valid team.json keeps mailbox admission working on the same hook path
+  ---
+  duration_ms: 16.7405
+  type: 'test'
+  ...
+# Subtest: B1: corrupt team.json rejects delegated spawn with an actionable error, not a raw SyntaxError
+ok 3 - B1: corrupt team.json rejects delegated spawn with an actionable error, not a raw SyntaxError
+  ---
+  duration_ms: 6.9951
+  type: 'test'
+  ...
+# Subtest: B2: valid team.json with a removed member still gets the intended guard rejection
+ok 4 - B2: valid team.json with a removed member still gets the intended guard rejection
+  ---
+  duration_ms: 14.8937
+  type: 'test'
+  ...
+# Subtest: B3: valid team.json still enforces the member delegation depth limit
+ok 5 - B3: valid team.json still enforces the member delegation depth limit
+  ---
+  duration_ms: 7.1739
+  type: 'test'
+  ...
+# Subtest: B4: unreadable (EACCES) team.json rejects delegated spawn with the actionable guard error
+ok 6 - B4: unreadable (EACCES) team.json rejects delegated spawn with the actionable guard error # SKIP Windows chmod does not enforce POSIX read permissions; skipping
+  ---
+  duration_ms: 0.3096
+  type: 'test'
+  ...
+# Subtest: B5: missing state directory (ENOENT guard branch) yields the intended member rejection, not a read error
+ok 7 - B5: missing state directory (ENOENT guard branch) yields the intended member rejection, not a read error
+  ---
+  duration_ms: 1.3673
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 1
+# todo 0
+# duration_ms 493.4059
+$ node scripts/web-routes-verify.mjs
+PASS Web routes: real host authentication, bounded bodies, trusted origins, fail-closed startup, disposal and reload
+$ node --test scripts/release-metadata.test.mjs
+TAP version 13
+# Subtest: stable latest requires the recommended host and bounded compatibility
+ok 1 - stable latest requires the recommended host and bounded compatibility
+  ---
+  duration_ms: 5.088
+  type: 'test'
+  ...
+# Subtest: alpha candidates use next and never replace latest
+ok 2 - alpha candidates use next and never replace latest
+  ---
+  duration_ms: 1.9093
+  type: 'test'
+  ...
+# Subtest: beta candidates use next and never replace latest
+ok 3 - beta candidates use next and never replace latest
+  ---
+  duration_ms: 1.8715
+  type: 'test'
+  ...
+# Subtest: rc candidates use next and never replace latest
+ok 4 - rc candidates use next and never replace latest
+  ---
+  duration_ms: 1.6921
+  type: 'test'
+  ...
+# Subtest: reject unsupported versions and unbounded peers
+ok 5 - reject unsupported versions and unbounded peers
+  ---
+  duration_ms: 1.7878
+  type: 'test'
+  ...
+# Subtest: checked-in candidate has consistent dependency and release metadata
+ok 6 - checked-in candidate has consistent dependency and release metadata
+  ---
+  duration_ms: 0.6954
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 135.0736
+$ node scripts/readme-version.mjs && node --test scripts/readme-version.test.mjs
+README version references match 0.1.22
+TAP version 13
+# Subtest: a README that still names an older plugin version is rejected
+ok 1 - a README that still names an older plugin version is rejected
+  ---
+  duration_ms: 1.4125
+  type: 'test'
+  ...
+# Subtest: an older version left in prose is rejected even without an install command
+ok 2 - an older version left in prose is rejected even without an install command
+  ---
+  duration_ms: 0.5928
+  type: 'test'
+  ...
+# Subtest: older versions stay reachable through their release-notes links
+ok 3 - older versions stay reachable through their release-notes links
+  ---
+  duration_ms: 0.1637
+  type: 'test'
+  ...
+# Subtest: a shorter version does not match inside a longer prerelease
+ok 4 - a shorter version does not match inside a longer prerelease
+  ---
+  duration_ms: 0.1469
+  type: 'test'
+  ...
+# Subtest: install commands are extracted regardless of version
+ok 5 - install commands are extracted regardless of version
+  ---
+  duration_ms: 0.0983
+  type: 'test'
+  ...
+# Subtest: published versions come from the release notes themselves
+ok 6 - published versions come from the release notes themselves
+  ---
+  duration_ms: 0.4473
+  type: 'test'
+  ...
+# Subtest: the checked-in READMEs match the package version
+ok 7 - the checked-in READMEs match the package version
+  ---
+  duration_ms: 1.5375
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 98.1672
+$ node scripts/sync-skill.mjs --check
+DSH skill mirrors are up to date: 11 skills, 128 files.
+$ node scripts/harness-compat-tdd.mjs && node scripts/stability-tdd.mjs && node scripts/lifecycle-verify.mjs --modern-harness && node scripts/member-failure-tdd.mjs --modern-harness && node scripts/lifecycle-verify.mjs --delivery-harness && node scripts/member-failure-tdd.mjs --delivery-harness && node --test scripts/client-harness-migration.test.mjs scripts/workspace-activity.test.mjs
+TAP version 13
+# Subtest: native SubagentRuntime keeps its receiver through FIFO delivery and retirement guard
+ok 1 - native SubagentRuntime keeps its receiver through FIFO delivery and retirement guard
+  ---
+  duration_ms: 7.3669
+  type: 'test'
+  ...
+# Subtest: modern queue and public messaging are both guarded, including nested HMR disposal
+ok 2 - modern queue and public messaging are both guarded, including nested HMR disposal
+  ---
+  duration_ms: 0.3527
+  type: 'test'
+  ...
+# Subtest: unsupported queue-only or send-only contract fails explicitly
+ok 3 - unsupported queue-only or send-only contract fails explicitly
+  ---
+  duration_ms: 0.3567
+  type: 'test'
+  ...
+# Subtest: legacy session history excludes its inherited prefix; modern uses ownEvents receiver
+ok 4 - legacy session history excludes its inherited prefix; modern uses ownEvents receiver
+  ---
+  duration_ms: 0.1497
+  type: 'test'
+  ...
+# Subtest: synchronous modern setup selects the first request, deduplicates events, and disposes for HMR
+ok 5 - synchronous modern setup selects the first request, deduplicates events, and disposes for HMR
+  ---
+  duration_ms: 1.4033
+  type: 'test'
+  ...
+# Subtest: child disposal releases lifecycle contributions and permits a same-id resumed Agent
+ok 6 - child disposal releases lifecycle contributions and permits a same-id resumed Agent
+  ---
+  duration_ms: 0.1959
+  type: 'test'
+  ...
+# Subtest: setup exception blocks request instead of being swallowed by session-start dispatch
+ok 7 - setup exception blocks request instead of being swallowed by session-start dispatch
+  ---
+  duration_ms: 0.2835
+  type: 'test'
+  ...
+# Subtest: a child inheriting another member descriptor does not acquire member selection or failure hooks
+ok 8 - a child inheriting another member descriptor does not acquire member selection or failure hooks
+  ---
+  duration_ms: 0.3353
+  type: 'test'
+  ...
+# Subtest: cold resume restores route and effort coherently (fallbackActive=false)
+ok 9 - cold resume restores route and effort coherently (fallbackActive=false)
+  ---
+  duration_ms: 23.5906
+  type: 'test'
+  ...
+# Subtest: cold resume restores route and effort coherently (fallbackActive=true)
+ok 10 - cold resume restores route and effort coherently (fallbackActive=true)
+  ---
+  duration_ms: 6.672
+  type: 'test'
+  ...
+# Subtest: spawn explicitly passes reasoning effort, preserving persona and tool filters
+ok 11 - spawn explicitly passes reasoning effort, preserving persona and tool filters
+  ---
+  duration_ms: 0.9916
+  type: 'test'
+  ...
+# Subtest: depth deny entries resolve against the host tool registry (\#163, \#164)
+ok 12 - depth deny entries resolve against the host tool registry (\#163, \#164)
+  ---
+  duration_ms: 0.4264
+  type: 'test'
+  ...
+# Subtest: 0.1.5 delivery queues team jobs and guards both host modes across HMR
+ok 13 - 0.1.5 delivery queues team jobs and guards both host modes across HMR
+  ---
+  duration_ms: 0.6564
+  type: 'test'
+  ...
+# Subtest: serial agent/created installs before first request, skips old early notification and cleans up
+ok 14 - serial agent/created installs before first request, skips old early notification and cleans up
+  ---
+  duration_ms: 0.2502
+  type: 'test'
+  ...
+# Subtest: serial initialization failure vetoes creation instead of admitting a default-model request
+ok 15 - serial initialization failure vetoes creation instead of admitting a default-model request
+  ---
+  duration_ms: 0.1752
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 51.2408
+TAP version 13
+# Subtest: work, empty, staged, halted and escalated teams cannot falsely declare delivery
+ok 1 - work, empty, staged, halted and escalated teams cannot falsely declare delivery
+  ---
+  duration_ms: 1.1212
+  type: 'test'
+  ...
+# Subtest: inbox acceptance leaves 32 messages unread; one admitted step consumes them exactly once
+ok 2 - inbox acceptance leaves 32 messages unread; one admitted step consumes them exactly once
+  ---
+  duration_ms: 309.2774
+  type: 'test'
+  ...
+# Subtest: old-generation guidance is discarded while current mail survives the same batch
+ok 3 - old-generation guidance is discarded while current mail survives the same batch
+  ---
+  duration_ms: 40.8448
+  type: 'test'
+  ...
+# Subtest: reported completion suppresses only redundant native success settlements
+ok 4 - reported completion suppresses only redundant native success settlements
+  ---
+  duration_ms: 55.281
+  type: 'test'
+  ...
+# Subtest: next-step steering preserves the native delivery modes across all three contracts
+ok 5 - next-step steering preserves the native delivery modes across all three contracts
+  ---
+  duration_ms: 1.2485
+  type: 'test'
+  ...
+# Subtest: internal wakeups and cold admission are rejected for stopped or retired members
+ok 6 - internal wakeups and cold admission are rejected for stopped or retired members
+  ---
+  duration_ms: 29.1286
+  type: 'test'
+  ...
+# Subtest: member-relative delegation limit covers raw runtime calls and preserves unrelated siblings
+ok 7 - member-relative delegation limit covers raw runtime calls and preserves unrelated siblings
+  ---
+  duration_ms: 7.024
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 448.5292
+dsh-agent-teams lifecycle verification
+  PASS  slash command registers as /agent-teams
+  PASS  slash command advertises an input hint for the menu placeholder
+  PASS  configured profile registers a concise dedicated slash command
+  PASS  unsafe profile names do not generate ambiguous commands
+  PASS  bare /agent-teams reports usage instead of activating
+  PASS  argued /agent-teams queues one visible user turn
+  PASS  slash command preserves the exact submitted line as user-authored chat
+  PASS  preserved slash command still activates through the gesture boundary
+  PASS  activation directive names the protocol
+  PASS  profile command queues a visible profile-specific user turn
+  PASS  gesture recognizes a leading /agent-teams token
+  PASS  profile command gesture selects its configured profile and goal
+  PASS  bare profile command gesture asks for the goal
+  PASS  unknown profile command stays ordinary prose
+  PASS  bare gesture yields an empty goal
+  PASS  mid-sentence mention stays ordinary prose
+  PASS  non-user sources cannot forge the gesture
+  PASS  latest user gesture wins in a batch
+  PASS  slash --profile without a goal still activates
+  PASS  profile-only activation asks for the goal
+  PASS  captain-planning activation requires a staged user-reviewed graph
+  PASS  unknown slash profile reports error and does not followup
+  PASS  leading ordinary token is never treated as a profile
+  PASS  command getter sees HMR profile names
+  PASS  create(profile) returns profile members tasks and seed ids
+  PASS  create(profile) persists snapshot members and mapped dependencies
+  PASS  dependency-blocked roster does not spawn a model session
+  PASS  first-stage seed is assigned only to the configured member
+  PASS  first assignment includes team goal and protocol
+  PASS  failed upstream does not unlock the next configured stage
+  PASS  completed upstream dispatches the configured downstream assignee
+  PASS  downstream assignment includes dependency output and seed id
+  PASS  unread mailbox prevents a same-kick new assignment
+  PASS  status exposes profile snapshot and task seed ids
+  PASS  discarding a staged plan archives it without spawning or dispatching
+  PASS  discard aborts the active Captain turn and parks an authoritative no-recreate context
+  PASS  captain-planning create stages only the configured roster
+  PASS  staged roster and DAG are editable without spawning or dispatching
+  PASS  invalid staged plan batches fail atomically without a partial write
+  PASS  return-to-chat cancels the planning turn and asks one question without recreating the team
+  PASS  return-to-chat is idempotent while feedback is already pending
+  PASS  captain can revise the staged DAG and roster through one model-facing atomic tool
+  PASS  running never-started tasks can be corrected without replacing the DAG
+  PASS  invalid running plan batches preserve the entire previous graph
+  PASS  running edits reject active attempts, cycles and roster changes: {"action":"update_task","task_id":"t1","subject":"do not overwrite active work"}
+  PASS  running edits reject active attempts, cycles and roster changes: {"action":"update_task","task_id":"t2","dependencies":["t2"]}
+  PASS  running edits reject active attempts, cycles and roster changes: {"action":"remove_member","member_name":"implementer"}
+  PASS  captain can cancel dependency-blocked member work before its first attempt
+  PASS  approval starts only dependency-ready members
+  PASS  approved plan dispatches only after a spawned member becomes idle
+  PASS  captain halt cancels the approved graph and keeps the team
+  PASS  team halt cancels the captain turn while preserving queued user input
+  PASS  captain halt drains active members and leaves blocked members unspawned
+  PASS  halted team does not redispatch cancelled graph
+  PASS  halted create_task does not silently resume
+  PASS  explicit resume clears halt and keeps cancelled tasks cancelled
+  PASS  shutdown preserves cancelled task history in the archive
+  PASS  quality implementation without contract is rejected
+  PASS  missing attempt_id is a correctable parameter error, not a revoked attempt
+  PASS  missing attempt_id is a correctable parameter error, not a revoked attempt
+  PASS  illegal completed without acceptance evidence is rejected
+  PASS  issue159 terminal evidence is durable and duplicate submissions are idempotent
+  PASS  issue159 supplementary evidence preserves the original result and completion timestamp
+  PASS  issue159 captain supplements terminal member work without takeover
+  PASS  issue159 supplemental evidence is visible in status
+  PASS  issue159 stale capabilities cannot append terminal evidence
+  PASS  issue159 identical report retries reuse one durable message
+  PASS  issue159 teammates cannot supplement another owners terminal work
+  PASS  issue159 stale explicit reports are rejected before entering the mailbox
+  PASS  review needs_revision cannot complete
+  PASS  issue159 automatic repair creation notifies the captain
+  PASS  needs_revision opens repair and next review
+  PASS  adding members alone creates no child sessions
+  PASS  manually added members persist the global fallback for later activations
+  PASS  idle assigned member is claimed and woken automatically
+  PASS  captain cannot mint a claim capability for a member; use reassign_task
+  PASS  member observes the scheduler attempt idempotently
+  PASS  dependency gate stays pending before both branches complete
+  PASS  rate-limited idle owner does not enter an unbounded retry loop (#66)
+  PASS  disposed settled owner keeps its parked attempt across repeated scheduler kicks
+  PASS  idle assigned gamma is claimed for the recovery-failure fixture
+  PASS  issue159 failed recovery restores partial evidence with the original capability
+  PASS  failed unobserved recovery restores the original capability and later kicks do not recast it
+  PASS  restored capability remains usable after a failed recovery delivery
+  PASS  unobserved missing owner recovers once and repeated kicks do not rotate it again
+  PASS  captain message resumes a parked owner without rotating its attempt
+  PASS  captain cannot bypass the safe takeover protocol
+  PASS  reassignment quiesces recovered owner and creates a new attempt
+  PASS  old member cannot publish a late takeover result
+  PASS  resumed recovered member completes with its throttled capability
+  PASS  completing dependencies dispatches the downstream task before member execution
+  PASS  previously interrupted member is reused in a later round
+  PASS  a member cannot claim a second unfinished task
+  PASS  removing a member revokes and redispatches its unfinished task
+  PASS  removing a member preserves its catalog entry for transcript history
+  PASS  removing a member blocks direct followup before resume
+  PASS  removed member loses participant authorization
+  PASS  failed live message remains one unread durable fallback
+  PASS  status kick accepts fallback without inventing consumption
+  PASS  recipient status acknowledges the complete fallback actually displayed
+  PASS  concurrent claims serialize to exactly one owner
+  PASS  terminal output is immutable against late overwrite
+  PASS  captain takeover owns a fresh attempt and rejects the old member
+  PASS  parallel captain takeovers allow exactly one active captain task
+  PASS  unfinished captain takeover returns to a member when the captain becomes idle
+  PASS  activity refines residency through the live Agent registry
+  PASS  team shutdown archives the complete durable record
+  PASS  archived activity keeps every member after shutdown
+  PASS  archived activity projects each member model onto assigned tasks
+  PASS  team shutdown keeps retired members catalog-visible for historical transcripts
+  PASS  team shutdown blocks storage-only member cold resume
+  PASS  team shutdown leaves unrelated continuable subagents untouched
+  PASS  team shutdown leaves unrelated continuable followup untouched
+  PASS  invalid roster approval rejects before any member session is created
+  PASS  same-name team can be recreated and archived again
+  PASS  request failure alone leaves the attempt open for Harness recovery
+  PASS  turn failure fails the open attempt, releases the member, and owns no retry
+  PASS  turn failure notifies the captain mailbox with the error code
+  PASS  settled member discards failed-attempt guidance without another model turn
+  PASS  invalid batch plan is rejected without any state or session side effect
+  PASS  one atomic call creates the full roster and resolves forward dependency references
+  PASS  ordinary pending work cannot be reported deliverable
+  PASS  claim exposes the complete task contract without reading team files
+  PASS  failed teardown keeps reassignment fenced and does not launch a new generation
+  PASS  the same failed handoff can be retried safely
+  PASS  failed member drain never reports a successful archive
+  PASS  archive retries drain previously removed roster rows
+
+all lifecycle checks passed
+TAP version 13
+# Subtest: always retry keeps the owned task open and sends no false failure report
+ok 1 - always retry keeps the owned task open and sends no false failure report
+  ---
+  duration_ms: 20.0662
+  type: 'test'
+  ...
+# Subtest: request handler delegates recovery and leaves exhausted requests open until final error
+ok 2 - request handler delegates recovery and leaves exhausted requests open until final error
+  ---
+  duration_ms: 9.3861
+  type: 'test'
+  ...
+# Subtest: fallback recovers once and exhausted fallback still delegates without failing the task
+ok 3 - fallback recovers once and exhausted fallback still delegates without failing the task
+  ---
+  duration_ms: 14.2462
+  type: 'test'
+  ...
+# Subtest: aborted request does not fail a task or consume its fallback route
+ok 4 - aborted request does not fail a task or consume its fallback route
+  ---
+  duration_ms: 13.7155
+  type: 'test'
+  ...
+# Subtest: final failure notifies idle captain once and flushes without an idle event
+ok 5 - final failure notifies idle captain once and flushes without an idle event
+  ---
+  duration_ms: 42.0152
+  type: 'test'
+  ...
+# Subtest: final failure notifies running captain once and flushes without an idle event
+ok 6 - final failure notifies running captain once and flushes without an idle event
+  ---
+  duration_ms: 37.0202
+  type: 'test'
+  ...
+# Subtest: task that completes while final failure waits for the lock gets a note only
+ok 7 - task that completes while final failure waits for the lock gets a note only
+  ---
+  duration_ms: 26.1344
+  type: 'test'
+  ...
+# Subtest: settled task failure adds one captain note and preserves the task record
+ok 8 - settled task failure adds one captain note and preserves the task record
+  ---
+  duration_ms: 27.1656
+  type: 'test'
+  ...
+# Subtest: settled error queued before newer work is ignored
+ok 9 - settled error queued before newer work is ignored
+  ---
+  duration_ms: 18.248
+  type: 'test'
+  ...
+# Subtest: report a final error immediately but do not dispatch while the driver is still running
+ok 10 - report a final error immediately but do not dispatch while the driver is still running
+  ---
+  duration_ms: 38.3634
+  type: 'test'
+  ...
+# Subtest: unavailable captain keeps failure notification readable: {"captainOffline":true}
+ok 11 - unavailable captain keeps failure notification readable: {"captainOffline":true}
+  ---
+  duration_ms: 20.4512
+  type: 'test'
+  ...
+# Subtest: unavailable captain keeps failure notification readable: {"rejectDelivery":true}
+ok 12 - unavailable captain keeps failure notification readable: {"rejectDelivery":true}
+  ---
+  duration_ms: 18.931
+  type: 'test'
+  ...
+# Subtest: a queued error cannot fail a newer attempt created before it gets the team lock
+ok 13 - a queued error cannot fail a newer attempt created before it gets the team lock
+  ---
+  duration_ms: 10.6857
+  type: 'test'
+  ...
+# Subtest: settled failure preserves removed member state and sends no stale report
+ok 14 - settled failure preserves removed member state and sends no stale report
+  ---
+  duration_ms: 6.6516
+  type: 'test'
+  ...
+# Subtest: settled task selection uses activity time rather than task creation order
+ok 15 - settled task selection uses activity time rather than task creation order
+  ---
+  duration_ms: 29.068
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 338.5976
+dsh-agent-teams lifecycle verification
+  PASS  slash command registers as /agent-teams
+  PASS  slash command advertises an input hint for the menu placeholder
+  PASS  configured profile registers a concise dedicated slash command
+  PASS  unsafe profile names do not generate ambiguous commands
+  PASS  bare /agent-teams reports usage instead of activating
+  PASS  argued /agent-teams queues one visible user turn
+  PASS  slash command preserves the exact submitted line as user-authored chat
+  PASS  preserved slash command still activates through the gesture boundary
+  PASS  activation directive names the protocol
+  PASS  profile command queues a visible profile-specific user turn
+  PASS  gesture recognizes a leading /agent-teams token
+  PASS  profile command gesture selects its configured profile and goal
+  PASS  bare profile command gesture asks for the goal
+  PASS  unknown profile command stays ordinary prose
+  PASS  bare gesture yields an empty goal
+  PASS  mid-sentence mention stays ordinary prose
+  PASS  non-user sources cannot forge the gesture
+  PASS  latest user gesture wins in a batch
+  PASS  slash --profile without a goal still activates
+  PASS  profile-only activation asks for the goal
+  PASS  captain-planning activation requires a staged user-reviewed graph
+  PASS  unknown slash profile reports error and does not followup
+  PASS  leading ordinary token is never treated as a profile
+  PASS  command getter sees HMR profile names
+  PASS  create(profile) returns profile members tasks and seed ids
+  PASS  create(profile) persists snapshot members and mapped dependencies
+  PASS  dependency-blocked roster does not spawn a model session
+  PASS  first-stage seed is assigned only to the configured member
+  PASS  first assignment includes team goal and protocol
+  PASS  failed upstream does not unlock the next configured stage
+  PASS  completed upstream dispatches the configured downstream assignee
+  PASS  downstream assignment includes dependency output and seed id
+  PASS  unread mailbox prevents a same-kick new assignment
+  PASS  status exposes profile snapshot and task seed ids
+  PASS  discarding a staged plan archives it without spawning or dispatching
+  PASS  discard aborts the active Captain turn and parks an authoritative no-recreate context
+  PASS  captain-planning create stages only the configured roster
+  PASS  staged roster and DAG are editable without spawning or dispatching
+  PASS  invalid staged plan batches fail atomically without a partial write
+  PASS  return-to-chat cancels the planning turn and asks one question without recreating the team
+  PASS  return-to-chat is idempotent while feedback is already pending
+  PASS  captain can revise the staged DAG and roster through one model-facing atomic tool
+  PASS  running never-started tasks can be corrected without replacing the DAG
+  PASS  invalid running plan batches preserve the entire previous graph
+  PASS  running edits reject active attempts, cycles and roster changes: {"action":"update_task","task_id":"t1","subject":"do not overwrite active work"}
+  PASS  running edits reject active attempts, cycles and roster changes: {"action":"update_task","task_id":"t2","dependencies":["t2"]}
+  PASS  running edits reject active attempts, cycles and roster changes: {"action":"remove_member","member_name":"implementer"}
+  PASS  captain can cancel dependency-blocked member work before its first attempt
+  PASS  approval starts only dependency-ready members
+  PASS  approved plan dispatches only after a spawned member becomes idle
+  PASS  captain halt cancels the approved graph and keeps the team
+  PASS  team halt cancels the captain turn while preserving queued user input
+  PASS  captain halt drains active members and leaves blocked members unspawned
+  PASS  halted team does not redispatch cancelled graph
+  PASS  halted create_task does not silently resume
+  PASS  explicit resume clears halt and keeps cancelled tasks cancelled
+  PASS  shutdown preserves cancelled task history in the archive
+  PASS  quality implementation without contract is rejected
+  PASS  missing attempt_id is a correctable parameter error, not a revoked attempt
+  PASS  missing attempt_id is a correctable parameter error, not a revoked attempt
+  PASS  illegal completed without acceptance evidence is rejected
+  PASS  issue159 terminal evidence is durable and duplicate submissions are idempotent
+  PASS  issue159 supplementary evidence preserves the original result and completion timestamp
+  PASS  issue159 captain supplements terminal member work without takeover
+  PASS  issue159 supplemental evidence is visible in status
+  PASS  issue159 stale capabilities cannot append terminal evidence
+  PASS  issue159 identical report retries reuse one durable message
+  PASS  issue159 teammates cannot supplement another owners terminal work
+  PASS  issue159 stale explicit reports are rejected before entering the mailbox
+  PASS  review needs_revision cannot complete
+  PASS  issue159 automatic repair creation notifies the captain
+  PASS  needs_revision opens repair and next review
+  PASS  adding members alone creates no child sessions
+  PASS  manually added members persist the global fallback for later activations
+  PASS  idle assigned member is claimed and woken automatically
+  PASS  captain cannot mint a claim capability for a member; use reassign_task
+  PASS  member observes the scheduler attempt idempotently
+  PASS  dependency gate stays pending before both branches complete
+  PASS  rate-limited idle owner does not enter an unbounded retry loop (#66)
+  PASS  disposed settled owner keeps its parked attempt across repeated scheduler kicks
+  PASS  idle assigned gamma is claimed for the recovery-failure fixture
+  PASS  issue159 failed recovery restores partial evidence with the original capability
+  PASS  failed unobserved recovery restores the original capability and later kicks do not recast it
+  PASS  restored capability remains usable after a failed recovery delivery
+  PASS  unobserved missing owner recovers once and repeated kicks do not rotate it again
+  PASS  captain message resumes a parked owner without rotating its attempt
+  PASS  captain cannot bypass the safe takeover protocol
+  PASS  reassignment quiesces recovered owner and creates a new attempt
+  PASS  old member cannot publish a late takeover result
+  PASS  resumed recovered member completes with its throttled capability
+  PASS  completing dependencies dispatches the downstream task before member execution
+  PASS  previously interrupted member is reused in a later round
+  PASS  a member cannot claim a second unfinished task
+  PASS  removing a member revokes and redispatches its unfinished task
+  PASS  removing a member preserves its catalog entry for transcript history
+  PASS  removing a member blocks direct followup before resume
+  PASS  removed member loses participant authorization
+  PASS  failed live message remains one unread durable fallback
+  PASS  status kick accepts fallback without inventing consumption
+  PASS  recipient status acknowledges the complete fallback actually displayed
+  PASS  concurrent claims serialize to exactly one owner
+  PASS  terminal output is immutable against late overwrite
+  PASS  captain takeover owns a fresh attempt and rejects the old member
+  PASS  parallel captain takeovers allow exactly one active captain task
+  PASS  unfinished captain takeover returns to a member when the captain becomes idle
+  PASS  activity refines residency through the live Agent registry
+  PASS  team shutdown archives the complete durable record
+  PASS  archived activity keeps every member after shutdown
+  PASS  archived activity projects each member model onto assigned tasks
+  PASS  team shutdown keeps retired members catalog-visible for historical transcripts
+  PASS  team shutdown blocks storage-only member cold resume
+  PASS  team shutdown leaves unrelated continuable subagents untouched
+  PASS  team shutdown leaves unrelated continuable followup untouched
+  PASS  invalid roster approval rejects before any member session is created
+  PASS  same-name team can be recreated and archived again
+  PASS  request failure alone leaves the attempt open for Harness recovery
+  PASS  turn failure fails the open attempt, releases the member, and owns no retry
+  PASS  turn failure notifies the captain mailbox with the error code
+  PASS  settled member discards failed-attempt guidance without another model turn
+  PASS  invalid batch plan is rejected without any state or session side effect
+  PASS  one atomic call creates the full roster and resolves forward dependency references
+  PASS  ordinary pending work cannot be reported deliverable
+  PASS  claim exposes the complete task contract without reading team files
+  PASS  failed teardown keeps reassignment fenced and does not launch a new generation
+  PASS  the same failed handoff can be retried safely
+  PASS  failed member drain never reports a successful archive
+  PASS  archive retries drain previously removed roster rows
+
+all lifecycle checks passed
+TAP version 13
+# Subtest: always retry keeps the owned task open and sends no false failure report
+ok 1 - always retry keeps the owned task open and sends no false failure report
+  ---
+  duration_ms: 18.0209
+  type: 'test'
+  ...
+# Subtest: request handler delegates recovery and leaves exhausted requests open until final error
+ok 2 - request handler delegates recovery and leaves exhausted requests open until final error
+  ---
+  duration_ms: 8.8461
+  type: 'test'
+  ...
+# Subtest: fallback recovers once and exhausted fallback still delegates without failing the task
+ok 3 - fallback recovers once and exhausted fallback still delegates without failing the task
+  ---
+  duration_ms: 8.9396
+  type: 'test'
+  ...
+# Subtest: aborted request does not fail a task or consume its fallback route
+ok 4 - aborted request does not fail a task or consume its fallback route
+  ---
+  duration_ms: 14.2916
+  type: 'test'
+  ...
+# Subtest: final failure notifies idle captain once and flushes without an idle event
+ok 5 - final failure notifies idle captain once and flushes without an idle event
+  ---
+  duration_ms: 39.6273
+  type: 'test'
+  ...
+# Subtest: final failure notifies running captain once and flushes without an idle event
+ok 6 - final failure notifies running captain once and flushes without an idle event
+  ---
+  duration_ms: 40.3747
+  type: 'test'
+  ...
+# Subtest: task that completes while final failure waits for the lock gets a note only
+ok 7 - task that completes while final failure waits for the lock gets a note only
+  ---
+  duration_ms: 26.4065
+  type: 'test'
+  ...
+# Subtest: settled task failure adds one captain note and preserves the task record
+ok 8 - settled task failure adds one captain note and preserves the task record
+  ---
+  duration_ms: 72.3794
+  type: 'test'
+  ...
+# Subtest: settled error queued before newer work is ignored
+ok 9 - settled error queued before newer work is ignored
+  ---
+  duration_ms: 10.8499
+  type: 'test'
+  ...
+# Subtest: report a final error immediately but do not dispatch while the driver is still running
+ok 10 - report a final error immediately but do not dispatch while the driver is still running
+  ---
+  duration_ms: 42.4219
+  type: 'test'
+  ...
+# Subtest: unavailable captain keeps failure notification readable: {"captainOffline":true}
+ok 11 - unavailable captain keeps failure notification readable: {"captainOffline":true}
+  ---
+  duration_ms: 26.7908
+  type: 'test'
+  ...
+# Subtest: unavailable captain keeps failure notification readable: {"rejectDelivery":true}
+ok 12 - unavailable captain keeps failure notification readable: {"rejectDelivery":true}
+  ---
+  duration_ms: 19.1982
+  type: 'test'
+  ...
+# Subtest: a queued error cannot fail a newer attempt created before it gets the team lock
+ok 13 - a queued error cannot fail a newer attempt created before it gets the team lock
+  ---
+  duration_ms: 8.6014
+  type: 'test'
+  ...
+# Subtest: settled failure preserves removed member state and sends no stale report
+ok 14 - settled failure preserves removed member state and sends no stale report
+  ---
+  duration_ms: 6.6335
+  type: 'test'
+  ...
+# Subtest: settled task selection uses activity time rather than task creation order
+ok 15 - settled task selection uses activity time rather than task creation order
+  ---
+  duration_ms: 32.3197
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 384.598
+TAP version 13
+# Subtest: panel follows mainView ownership including retained subagents outside the list ids
+ok 1 - panel follows mainView ownership including retained subagents outside the list ids
+  ---
+  duration_ms: 0.6606
+  type: 'test'
+  ...
+# Subtest: new workspace navigation opens an exact durable member address without removed session methods
+ok 2 - new workspace navigation opens an exact durable member address without removed session methods
+  ---
+  duration_ms: 1.4344
+  type: 'test'
+  ...
+# Subtest: failed create results never become successful team cards across both message formats
+ok 3 - failed create results never become successful team cards across both message formats
+  ---
+  duration_ms: 0.1327
+  type: 'test'
+  ...
+# Subtest: legacy sessions keep their old address navigation even when uiWorkspace exists
+ok 4 - legacy sessions keep their old address navigation even when uiWorkspace exists
+  ---
+  duration_ms: 0.1287
+  type: 'test'
+  ...
+# Subtest: turn tail keeps each team summary on its create turn and supports multiple teams
+ok 5 - turn tail keeps each team summary on its create turn and supports multiple teams
+  ---
+  duration_ms: 0.2419
+  type: 'test'
+  ...
+# Subtest: restored, closed, updated and newly created teams have distinct discovery semantics
+ok 6 - restored, closed, updated and newly created teams have distinct discovery semantics
+  ---
+  duration_ms: 0.6415
+  type: 'test'
+  ...
+# Subtest: historical cards and selected teams remain bound to their owner
+ok 7 - historical cards and selected teams remain bound to their owner
+  ---
+  duration_ms: 0.7992
+  type: 'test'
+  ...
+# Subtest: offline, invalid data and recovery report health without erasing the last snapshot
+ok 8 - offline, invalid data and recovery report health without erasing the last snapshot
+  ---
+  duration_ms: 3.5093
+  type: 'test'
+  ...
+# Subtest: disposal prevents a late failed request from updating a different session
+ok 9 - disposal prevents a late failed request from updating a different session
+  ---
+  duration_ms: 0.2426
+  type: 'test'
+  ...
+# Subtest: workspace DAG keeps real dependency endpoints aligned with enlarged nodes
+ok 10 - workspace DAG keeps real dependency endpoints aligned with enlarged nodes
+  ---
+  duration_ms: 2.4034
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 122.5328
+$ node --test scripts/http-body.test.mjs
+TAP version 13
+# Subtest: HTTP body reader returns 413 without losing the response or buffering the rest
+ok 1 - HTTP body reader returns 413 without losing the response or buffering the rest
+  ---
+  duration_ms: 71.458
+  type: 'test'
+  ...
+# Subtest: aborted body rejects and removes its buffering listeners
+ok 2 - aborted body rejects and removes its buffering listeners
+  ---
+  duration_ms: 0.6167
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 203.5282
+$ node scripts/compatibility.mjs && node --test scripts/compatibility.test.mjs && node scripts/doctor.mjs
+Compatibility targets: 0.2.0-rc.2, 0.1.7-rc.2, 0.1.5-rc.3, 0.1.5-rc.2, 0.1.5-rc.1, 0.1.2-rc.1, 0.1.2-alpha.5, 0.1.2-alpha.2
+TAP version 13
+# Subtest: source candidates pass the peer gate without entering the published download matrix
+ok 1 - source candidates pass the peer gate without entering the published download matrix
+  ---
+  duration_ms: 64.3642
+  type: 'test'
+  ...
+# Subtest: doctor distinguishes source-preview acceptance from released host validation
+ok 2 - doctor distinguishes source-preview acceptance from released host validation
+  ---
+  duration_ms: 11.6052
+  type: 'test'
+  ...
+# Subtest: doctor runs through an installed bin symlink and reports success or failure
+ok 3 - doctor runs through an installed bin symlink and reports success or failure # SKIP symlink capability unavailable: EPERM
+  ---
+  duration_ms: 3.5682
+  type: 'test'
+  ...
+# Subtest: policy rejects floating targets, duplicates, and alpha recommendation
+ok 4 - policy rejects floating targets, duplicates, and alpha recommendation
+  ---
+  duration_ms: 1.2951
+  type: 'test'
+  ...
+# Subtest: doctor detects transitive cohort mixing even with an exact CLI version
+ok 5 - doctor detects transitive cohort mixing even with an exact CLI version
+  ---
+  duration_ms: 31.0132
+  type: 'test'
+  ...
+# Subtest: doctor follows profile peers and rejects duplicate runtime identities
+ok 6 - doctor follows profile peers and rejects duplicate runtime identities
+  ---
+  duration_ms: 29.9231
+  type: 'test'
+  ...
+# Subtest: policy rejects missing or mixed development overrides
+ok 7 - policy rejects missing or mixed development overrides
+  ---
+  duration_ms: 1.3892
+  type: 'test'
+  ...
+# Subtest: policy rejects removed host peers and range-qualified or conditional DSH overrides
+ok 8 - policy rejects removed host peers and range-qualified or conditional DSH overrides
+  ---
+  duration_ms: 2.8085
+  type: 'test'
+  ...
+# Subtest: doctor reports missing nonoptional Cordis peers and required plugin imports even with optional metadata
+ok 9 - doctor reports missing nonoptional Cordis peers and required plugin imports even with optional metadata
+  ---
+  duration_ms: 35.6979
+  type: 'test'
+  ...
+# Subtest: doctor detects peer-only drift and a mismatched installed plugin
+ok 10 - doctor detects peer-only drift and a mismatched installed plugin
+  ---
+  duration_ms: 47.7442
+  type: 'test'
+  ...
+# Subtest: released target enters the download matrix and replaces the old source prediction
+ok 11 - released target enters the download matrix and replaces the old source prediction
+  ---
+  duration_ms: 0.1248
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 1
+# todo 0
+# duration_ms 356.4071
+Harness: 0.2.0-rc.2 (D:\dsh-workspaces\dev\local-plugins\dsh-agent-teams-router\node_modules\.pnpm\@deepseek-ai+dsh@0.2.0-rc.2_3be12f2d2a563182bb274fdf21148bde\node_modules\@deepseek-ai\dsh)
+DSH package identities checked: 278
+Dependency inspection passed.
+Checks files resolved from the supplied roots; does not identify the running process or prove plugin behavior.
+$ node --test scripts/capabilities.test.mjs
+TAP version 13
+# Subtest: stable tool presentation uses real scoped registry and prompt assembly
+    # Subtest: first request keeps all tools and the complete fixed captain protocol
+    ok 1 - first request keeps all tools and the complete fixed captain protocol
+      ---
+      duration_ms: 3.7952
+      type: 'test'
+      ...
+    # Subtest: cancelled and invalid business calls preserve the header
+    ok 2 - cancelled and invalid business calls preserve the header
+      ---
+      duration_ms: 8.7464
+      type: 'test'
+      ...
+    # Subtest: user restrictions remain authoritative while fixed profile metadata stays visible
+    ok 3 - user restrictions remain authoritative while fixed profile metadata stays visible
+      ---
+      duration_ms: 4.6634
+      type: 'test'
+      ...
+    # Subtest: the original tool allowlist can directly create and archive
+    ok 4 - the original tool allowlist can directly create and archive
+      ---
+      duration_ms: 31.7166
+      type: 'test'
+      ...
+    # Subtest: status reports halted work without replacing or resuming it
+    ok 5 - status reports halted work without replacing or resuming it
+      ---
+      duration_ms: 12.451
+      type: 'test'
+      ...
+    # Subtest: duplicate creation directs the captain to reuse the existing team without changing it
+    ok 6 - duplicate creation directs the captain to reuse the existing team without changing it
+      ---
+      duration_ms: 6.2802
+      type: 'test'
+      ...
+    # Subtest: fresh child is restricted to member tools before its id has been persisted
+    ok 7 - fresh child is restricted to member tools before its id has been persisted
+      ---
+      duration_ms: 1.8615
+      type: 'test'
+      ...
+    # Subtest: an ordinary subagent label cannot impersonate durable or pending membership
+    ok 8 - an ordinary subagent label cannot impersonate durable or pending membership
+      ---
+      duration_ms: 1.4078
+      type: 'test'
+      ...
+# (node:8532) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+    # Subtest: a retired member remains restricted to member operations on cold resume
+    ok 9 - a retired member remains restricted to member operations on cold resume
+      ---
+      duration_ms: 6.4338
+      type: 'test'
+      ...
+    # Subtest: PTC and both modes keep the operation SDK stable after status
+    ok 10 - PTC and both modes keep the operation SDK stable after status
+      ---
+      duration_ms: 490.5865
+      type: 'test'
+      ...
+    # Subtest: real run_code may discard status output without losing operating rules
+    ok 11 - real run_code may discard status output without losing operating rules
+      ---
+      duration_ms: 263.5892
+      type: 'test'
+      ...
+    # Subtest: HMR removes old masks and restores persisted participants in existing scopes
+    ok 12 - HMR removes old masks and restores persisted participants in existing scopes
+      ---
+      duration_ms: 9.7388
+      type: 'test'
+      ...
+    # Subtest: a cold captain loads its durable role before its first request
+    ok 13 - a cold captain loads its durable role before its first request
+      ---
+      duration_ms: 7.5943
+      type: 'test'
+      ...
+    # Subtest: archive and idle preserve the original captain prefix
+    ok 14 - archive and idle preserve the original captain prefix
+      ---
+      duration_ms: 4.1945
+      type: 'test'
+      ...
+    # Subtest: create, status and archive preserve the prefix in native and nested dispatch
+    ok 15 - create, status and archive preserve the prefix in native and nested dispatch
+      ---
+      duration_ms: 74.6393
+      type: 'test'
+      ...
+    # Subtest: even aggressive host result pruning cannot remove the system protocol
+    ok 16 - even aggressive host result pruning cannot remove the system protocol
+      ---
+      duration_ms: 2.1784
+      type: 'test'
+      ...
+    # Subtest: read failure leaves the fixed header intact
+    ok 17 - read failure leaves the fixed header intact
+      ---
+      duration_ms: 4.1165
+      type: 'test'
+      ...
+    1..17
+ok 1 - stable tool presentation uses real scoped registry and prompt assembly
+  ---
+  duration_ms: 1127.752
+  type: 'test'
+  ...
+# {"role":"captain-idle","profiles":["demo"],"promptBytes":8198,"schemaBytes":22016}
+# {"role":"member","promptBytes":443,"schemaBytes":5328}
+1..1
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1467.5381
+$ node --test scripts/member-spawn-recovery.test.mjs
+TAP version 13
+# Subtest: a member start drops the names the host rejects and succeeds
+    # Subtest: the rejected names are removed and the start succeeds
+    ok 1 - the rejected names are removed and the start succeeds
+      ---
+      duration_ms: 1.2475
+      type: 'test'
+      ...
+    # Subtest: only the names the host named are dropped, not the ones it listed as known
+    ok 2 - only the names the host named are dropped, not the ones it listed as known
+      ---
+      duration_ms: 0.1998
+      type: 'test'
+      ...
+    # Subtest: each rejection removes one more name until the host accepts the filter
+    ok 3 - each rejection removes one more name until the host accepts the filter
+      ---
+      duration_ms: 0.238
+      type: 'test'
+      ...
+    # Subtest: a first attempt that already works is not retried
+    ok 4 - a first attempt that already works is not retried
+      ---
+      duration_ms: 0.1355
+      type: 'test'
+      ...
+    1..4
+ok 1 - a member start drops the names the host rejects and succeeds
+  ---
+  duration_ms: 2.7835
+  type: 'test'
+  ...
+# Subtest: a member start that failed for another reason still surfaces
+    # Subtest: an unrelated start failure propagates
+    ok 1 - an unrelated start failure propagates
+      ---
+      duration_ms: 0.4853
+      type: 'test'
+      ...
+    # Subtest: a restriction error that is not an unknown-name report propagates
+    ok 2 - a restriction error that is not an unknown-name report propagates
+      ---
+      duration_ms: 0.1742
+      type: 'test'
+      ...
+    # Subtest: a non-error rejection does not loop forever
+    ok 3 - a non-error rejection does not loop forever
+      ---
+      duration_ms: 0.2199
+      type: 'test'
+      ...
+    # Subtest: a rejection that names no name already in the filter does not loop forever
+    ok 4 - a rejection that names no name already in the filter does not loop forever
+      ---
+      duration_ms: 0.2494
+      type: 'test'
+      ...
+    1..4
+ok 2 - a member start that failed for another reason still surfaces
+  ---
+  duration_ms: 1.8935
+  type: 'test'
+  ...
+1..2
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 279.5353
+$ node --test scripts/git-artifacts.test.mjs
+TAP version 13
+# Subtest: complete build matches its stamp and README changes do not invalidate it
+ok 1 - complete build matches its stamp and README changes do not invalidate it
+  ---
+  duration_ms: 46.8262
+  type: 'test'
+  ...
+# Subtest: source changes require rebuilding
+ok 2 - source changes require rebuilding
+  ---
+  duration_ms: 32.5706
+  type: 'test'
+  ...
+# Subtest: dependency settings require rebuilding
+ok 3 - dependency settings require rebuilding
+  ---
+  duration_ms: 26.6933
+  type: 'test'
+  ...
+# Subtest: modified and extra output cannot pass the stamp
+ok 4 - modified and extra output cannot pass the stamp
+  ---
+  duration_ms: 36.1127
+  type: 'test'
+  ...
+# Subtest: missing entry cannot be stamped as a valid build
+ok 5 - missing entry cannot be stamped as a valid build
+  ---
+  duration_ms: 15.6402
+  type: 'test'
+  ...
+# Subtest: a source tree with no build stamp cannot pass
+ok 6 - a source tree with no build stamp cannot pass
+  ---
+  duration_ms: 15.6818
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 287.4027
+$ node --test scripts/harness-source-verify.test.mjs
+TAP version 13
+# Subtest: source invocation cannot masquerade as an npm host-version verification
+ok 1 - source invocation cannot masquerade as an npm host-version verification
+  ---
+  duration_ms: 1.1257
+  type: 'test'
+  ...
+# Subtest: candidate acceptance requires the policy SHA and a clean source checkout
+ok 2 - candidate acceptance requires the policy SHA and a clean source checkout
+  ---
+  duration_ms: 0.3365
+  type: 'test'
+  ...
+# Subtest: workspace discovery ignores generated residue and rejects duplicate identities
+ok 3 - workspace discovery ignores generated residue and rejects duplicate identities
+  ---
+  duration_ms: 33.3645
+  type: 'test'
+  ...
+# Subtest: declared closure reports resolved versions and rejects a registry DSH duplicate
+ok 4 - declared closure reports resolved versions and rejects a registry DSH duplicate
+  ---
+  duration_ms: 26.8158
+  type: 'test'
+  ...
+# Subtest: missing required dependencies fail while unavailable optional platforms remain explicit
+ok 5 - missing required dependencies fail while unavailable optional platforms remain explicit
+  ---
+  duration_ms: 28.4998
+  type: 'test'
+  ...
+# Subtest: closure reads the package identity when export maps hide or redirect package.json
+ok 6 - closure reads the package identity when export maps hide or redirect package.json
+  ---
+  duration_ms: 24.7146
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 248.2434
+$ node scripts/git-artifacts.mjs
+Git artifacts match source and build settings.

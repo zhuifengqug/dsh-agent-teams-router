@@ -53,9 +53,13 @@ import {
   sanitizeReviewAcceptance,
   sanitizeReviewObjective,
   normalizeBlankOptionalTaskFields,
+  isValidFindingLine,
   taskKindOf,
 } from './state.ts'
-import { appendTaskEvidence } from './quality-gates.ts'
+import { appendTaskEvidence, artifactDrift, bindReviewToRevision, isVerdictKind, verdictScopePatterns, reviewedTargetOf, verdictAuditNotes, workOrderWarnings } from './quality-gates.ts'
+import { readArtifactScope, snapshotWorkspacePaths } from './artifacts.ts'
+import { auditTeamWorkspace } from './workspace-audit.ts'
+import type { ArtifactSnapshot } from './types.ts'
 import type { ContractAmendmentInput } from './state.ts'
 import type { AcceptanceResult, CommandResult, ReviewFinding, ReviewVerdict, TaskKind } from './types.ts'
 import {
@@ -83,11 +87,11 @@ import { resolveTeamProfile } from './profiles.ts'
 import {
   DEFAULT_LOCALE,
   clientLocaleOf,
-  listEnabledExperts,
+  listAgencyExperts,
   loadAgencyTeam,
   normalizeAgencyPlanTasks,
   resolveAgencyCreateRequest,
-  resolveExpertPersona,
+  resolveOptionalExpertPersona,
   type AgencyAssemblyResult,
   type AgencyPlanTaskRow,
 } from './agency-bridge.ts'
@@ -102,6 +106,8 @@ export interface ToolsConfig {
   memberProvider: string
   /** Optional member model override. */
   memberModel?: string
+  /** LLM provider paired with the configured member model. */
+  memberLlmProvider?: string
   /** Prompt injected into member personas and assignments. */
   executionPrompt?: string
   /** Plugin fallback route. */
@@ -275,6 +281,30 @@ function stateRootOf(workspace: string, config: ToolsConfig): string {
 /** Process-local lock key scoped by workspace state root and team id. */
 function teamLockKey(stateRoot: string, teamId: string): string {
   return `team:${stateRoot}:${teamId}`
+}
+
+/** Bind the closing gate to actual workspace bytes. */
+function bindClosingVerdict(workspace: string, team: TeamState, task: TeamTask): void {
+  if (task.status !== 'completed' || !isVerdictKind(taskKindOf(task))) return
+  if ((task.kind === 'review' || task.kind === 'requirements') && task.verdict !== 'pass') return
+  const scope = verdictScopePatterns(team, task)
+  if (scope.length === 0) {
+    if (task.kind !== 'requirements') Object.assign(task, bindReviewToRevision(team, task, {
+      artifacts: [], gaps: [{ pattern: task.id, reason: 'no reviewed artifact scope could be resolved' }],
+    }))
+    task.verdictStartSnapshot = undefined
+    return
+  }
+  const read = readArtifactScope(workspace, scope)
+  const start = task.verdictStartSnapshot
+  const duringDrift = start === undefined ? [] : [
+    ...artifactDrift(start.artifacts, read.artifacts),
+    ...(task.reviewedAttempt !== undefined && task.reviewedAttempt !== (reviewedTargetOf(team, task)?.attempt ?? 0) ? ['the reviewed task was re-attempted during this verdict'] : []),
+    ...(start.gaps ?? []).map(gap => gap.pattern + ': ' + gap.reason),
+    ...read.artifacts.filter(item => !start.artifacts.some(old => old.path === item.path)).map(item => item.path + ' appeared during review'),
+  ]
+  Object.assign(task, bindReviewToRevision(team, task, { artifacts: read.artifacts, gaps: read.gaps, scope, duringDrift }))
+  task.verdictStartSnapshot = undefined
 }
 
 /** Process-local lock key enforcing one active team per captain session. */
@@ -894,6 +924,7 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
         properties: {
           team_id: { type: 'string', required: true },
           team_name: { type: 'string', required: true },
+          captain_session_id: { type: 'string', required: true },
           state_dir: { type: 'string', required: true },
           phase: { type: 'string', required: true },
           profile: { type: 'string' },
@@ -909,10 +940,24 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
               note: { type: 'string', required: true, description: 'How the captain is expected to use the briefing.' },
             },
           },
-          members: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { member_name: { type: 'string', required: true }, member_id: { type: 'string', required: true }, provider: { type: 'string', required: true }, model: { type: 'string', required: true }, reasoning_effort: { type: 'string' }, status: { type: 'string', required: true } } } },
+          members: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { member_name: { type: 'string', required: true }, member_id: { type: 'string', required: true }, member_role: { type: 'string' }, provider: { type: 'string', required: true }, model: { type: 'string', required: true }, reasoning_effort: { type: 'string' }, status: { type: 'string', required: true } } } },
           tasks: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { task_id: { type: 'string', required: true }, seed_id: { type: 'string', required: true }, subject: { type: 'string', required: true }, status: { type: 'string', required: true }, kind: { type: 'string' }, assignee: { type: 'string' }, dependencies: { type: 'array', items: { type: 'string' }, required: true } } } },
         },
       },
+      presentationMeta: (_args, value) => ({
+        team_id: value.team_id,
+        team_name: value.team_name,
+        captain_session_id: value.captain_session_id,
+        phase: value.phase,
+        ...value.members === undefined ? {} : {
+          members: value.members.map(member => ({
+            id: member.member_id,
+            name: member.member_name,
+            role: member.member_role ?? '',
+            status: member.status,
+          })),
+        },
+      }),
       render: (args, value) => [{
         type: 'text',
         text: (value.phase === 'staged'
@@ -1092,23 +1137,34 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
         return {
           team_id: snapshot.id,
           team_name: snapshot.name,
+          captain_session_id: snapshot.captainSessionId,
           state_dir: join(stateRoot, snapshot.id),
           phase: snapshot.phase ?? 'running',
           ...agencyEcho,
+          members: snapshot.members.map((member) => ({
+            member_name: member.name,
+            member_id: member.id,
+            ...member.role === undefined ? {} : { member_role: member.role },
+            provider: member.provider ?? '',
+            model: member.model ?? '',
+            ...member.reasoningEffort === undefined ? {} : { reasoning_effort: member.reasoningEffort },
+            status: member.status,
+          })),
         }
       }
       return {
         team_id: snapshot.id,
         team_name: snapshot.name,
+        captain_session_id: snapshot.captainSessionId,
         state_dir: join(stateRoot, snapshot.id),
         phase: snapshot.phase ?? 'running',
         ...snapshot.profile === undefined ? {} : { profile: snapshot.profile.name },
         task_planning: snapshot.profile?.taskPlanning ?? 'seed',
         ...agencyEcho,
-        ...agencyEcho,
         members: snapshot.members.map((member) => ({
           member_name: member.name,
           member_id: member.id,
+          ...member.role === undefined ? {} : { member_role: member.role },
           provider: member.provider ?? '',
           model: member.model ?? '',
           ...member.reasoningEffort === undefined ? {} : { reasoning_effort: member.reasoningEffort },
@@ -1293,10 +1349,10 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
       name: { type: 'string', required: true, description: 'Unique member name inside the team. Write it in the user\'s current conversation language.' },
       role: { type: 'string', description: 'Role of the member (e.g. researcher, engineer, reviewer).' },
       provider: { type: 'string', description: 'Optional LLM provider route. Use only when the user explicitly requests a different provider; requires model.' },
-      model: { type: 'string', description: 'Optional model override. Omit for the captain\'s current model (or the configured memberModel default).' },
+      model: { type: 'string', description: 'Optional model override. Omit for the configured memberLlmProvider/memberModel route or the captain\'s current route.' },
       reasoning_effort: { type: 'string', description: 'Optional reasoning effort override: one of the target model\'s supported effort ids, or "default" to force its default. When omitted, the captain\'s effort is inherited only for the same provider/model; a changed route uses the target default.' },
       executionPrompt: { type: 'string', description: 'Optional member-specific execution prompt. It remains editable while staged.' },
-      expert: { type: 'string', description: 'Optional agency expert slug for THIS member only. When the task needs a specialist, pick one from agent_teams_experts and pass its slug: the member gets that expert\'s persona. Only enabled experts are accepted; an unknown or disabled slug fails the call. Omit for an ordinary member — a team does not have to be an agency team, and only some members need an expert.' },
+      expert: { type: 'string', description: 'Optional agency expert slug for THIS member only. When the task needs a specialist, pick one from agent_teams_experts and pass its slug: the member gets that expert\'s persona. Selection is frozen at creation. A missing, disabled or unreadable expert silently leaves an ordinary member. Omit for an ordinary member — a team does not have to be an agency team, and only some members need an expert.' },
     },
     output: {
       schema: {
@@ -1361,19 +1417,18 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
           provider: args.provider,
           model: args.model,
           defaultModel: config.memberModel,
+          defaultProvider: config.memberLlmProvider,
           reasoningEffort: args.reasoning_effort,
           fallback: config.fallback,
         }, exec.signal)
-        // 队员级专家：只在传了 expert 时才去取 persona；取不到就报错，
-        // 不静默当普通队员——否则队长会以为挂了专家。
+        // 只在成员创建时读取一次选中的有效专家；缺失项静默成为普通成员。
         const expertPrompt = args.expert === undefined || args.expert.trim() === ''
           ? undefined
-          : await resolveExpertPersona({
+          : await resolveOptionalExpertPersona({
             ctx: ctx as unknown as { get(key: never): unknown },
             slug: args.expert,
             locale: clientLocaleOf(ctx) ?? DEFAULT_LOCALE,
           })
-        if (expertPrompt !== undefined && !expertPrompt.ok) throw new Error(expertPrompt.error)
         const member: TeamMember = {
           id: '',
           name: memberName,
@@ -1742,6 +1797,11 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
         }
         if (quiescenceError === undefined && target === CAPTAIN_KEY) {
           beginTaskAttempt(task, CAPTAIN_KEY)
+          if (isVerdictKind(taskKindOf(task))) {
+            const scope = verdictScopePatterns(fresh, task)
+            if (scope.length > 0) task.verdictStartSnapshot = snapshotWorkspacePaths(workspace, scope)
+            task.reviewedAttempt = reviewedTargetOf(fresh, task)?.attempt ?? 0
+          }
           // The captain is already in the turn that requested takeover; there
           // is no later member claim handshake to move claimed -> in_progress.
           task.status = 'in_progress'
@@ -1854,6 +1914,11 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
           throw new Error(`member "${assignee}" is busy with ${busy.id}; finish or reassign it first`)
         }
         const attemptId = beginTaskAttempt(task, assignee)
+        if (isVerdictKind(taskKindOf(task))) {
+          const scope = verdictScopePatterns(fresh, task)
+          if (scope.length > 0) task.verdictStartSnapshot = snapshotWorkspacePaths(workspace, scope)
+            task.reviewedAttempt = reviewedTargetOf(fresh, task)?.attempt ?? 0
+        }
         await writeTeam(stateRoot, fresh)
         appendTeamEvent(ctx, captainSessionOf(ctx, fresh.captainSessionId, caller.session), 'agent-teams/task-updated', {
           teamId: fresh.id,
@@ -2044,9 +2109,10 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
           task.evidenceAttemptId = task.attemptId
         }
         task.updatedAt = Date.now()
+        bindClosingVerdict(workspace, fresh, task)
         const priorDependencies = new Map(fresh.tasks.map(item => [item.id, [...item.dependencies]]))
-        const followUp = (task.status === 'failed' && (task.verdict === 'needs_revision' || task.verdict === 'reject'))
-          ? applyQualityFollowUp(fresh, task)
+        const followUp = task.status === 'failed'
+          ? applyQualityFollowUp(fresh, task, paths => snapshotWorkspacePaths(workspace, paths))
           : undefined
         let followUpSummary: string | undefined
         if ((followUp?.created.length ?? 0) > 0) {
@@ -2058,7 +2124,7 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
           await appendMailbox(stateRoot, fresh.id, CAPTAIN_KEY, createMessage(
             CAPTAIN_KEY,
             CAPTAIN_KEY,
-            `Quality-gate loop escalated after ${task.id} (${task.kind ?? 'review'} verdict=${task.verdict}). Automatic repair/review stopped.`,
+            `Quality-gate loop escalated after ${task.id} (${task.kind ?? 'review'} verdict=${task.verdict}). Automatic repair/review stopped.${followUp.reason ? ' ' + followUp.reason : ''}${followUp.excludedFindings?.length ? ' Excluded findings: ' + followUp.excludedFindings.join(', ') : ''}`,
           ))
         }
         await writeTeam(stateRoot, fresh)
@@ -2319,7 +2385,7 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
 
   ctx.tools.register(defineTool({
     name: 'agent_teams_experts',
-    description: 'List the agency experts the user has enabled, with slug, division and a short description. Read-only: it does not create a team or read any persona text. Call it when a task needs a specialist, pick the best-matching slug yourself, then pass that slug as the expert field of agent_teams_add_member or a plan member row. The user does not have to name an expert. Omit expert for ordinary members — only the members that need a specialist carry one.',
+    description: 'List the complete agency expert catalog with slug, division, description and enabled state. Choose a matching enabled expert once when creating each member and pass its slug in expert. Omit expert when no suitable enabled entry exists; the member stays ordinary. This reads no persona text.',
     parameters: {},
     output: {
       schema: {
@@ -2332,6 +2398,7 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
             slug: { type: 'string', required: true },
             division: { type: 'string', required: true },
             description: { type: 'string', required: true },
+            enabled: { type: 'boolean', required: true },
           } } },
         },
       },
@@ -2341,11 +2408,11 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
           ? `Agency experts are unavailable: ${value.reason ?? 'unknown reason'}. Create the team with ordinary members instead.`
           : value.experts.length === 0
             ? 'The user has no enabled agency experts. Create the team with ordinary members instead.'
-            : value.experts.map(expert => `${expert.slug} [${expert.division}] ${expert.description}`).join('\n'),
+            : value.experts.map(expert => `${expert.slug} [${expert.division}; ${expert.enabled ? 'enabled' : 'disabled'}] ${expert.description}`).join('\n'),
       }],
     },
     async execute() {
-      const listed = await listEnabledExperts(ctx as unknown as { get(key: never): unknown })
+      const listed = await listAgencyExperts(ctx as unknown as { get(key: never): unknown })
       return listed.available
         ? { available: true, experts: listed.experts }
         : { available: false, reason: listed.reason, experts: [] }
@@ -2386,6 +2453,8 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
           activity: member.id !== '' ? (activity.get(member.id) ?? 'unknown') : 'unspawned',
           ...member.spawnError === undefined ? {} : { spawn_error: member.spawnError },
         }))
+      const statusAudit = auditTeamWorkspace(workspace, team)
+      const staleByTask = new Map([...verdictAuditNotes(team, statusAudit), ...workOrderWarnings(team, statusAudit.artifacts)].map(note => [note.taskId, note.message]))
       const tasks = team.tasks.map((task) => ({
         id: task.id,
         subject: task.subject,
@@ -2396,6 +2465,8 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
         attempt_id: task.attemptId ?? '',
         reassigning: task.reassigning === true,
         kind: taskKindOf(task),
+        ...staleByTask.has(task.id) ? { verdict_stale: staleByTask.get(task.id)! } : {},
+        ...task.findingSourceTaskIds === undefined ? {} : { fixes: task.findingSourceTaskIds.join(',') },
         ...task.round === undefined ? {} : { round: task.round },
         ...task.verdict === undefined ? {} : { verdict: task.verdict },
         ...task.supplementalEvidence === undefined ? {} : { supplemental_evidence: JSON.stringify(task.supplementalEvidence) },
@@ -2442,9 +2513,10 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): Agen
         status: row.status,
         ...row.evidence === undefined ? {} : { evidence: row.evidence },
       }))
-      const deliveryCheck = canDeclareDelivery(team)
-      const delivery = { ok: deliveryCheck.ok, blockers: [...deliveryCheck.blockers] }
-      const loop = describeQualityLoop(team)
+      const audit = statusAudit
+      const deliveryCheck = canDeclareDelivery(team, audit)
+      const delivery = { ok: deliveryCheck.ok, blockers: [...deliveryCheck.blockers], warnings: [...deliveryCheck.warnings] }
+      const loop = describeQualityLoop(team, audit)
       const result = {
         team_id: team.id,
         team_name: team.name,
@@ -2616,17 +2688,16 @@ async function initializeProfileTeam(input: {
   const profile = resolveTeamProfile(input.inlinePlan === undefined ? input.config.profiles : { [input.profileName]: input.inlinePlan }, input.profileName, input.config.maxMembers)
   const now = Date.now()
   const seedToActual = new Map(profile.tasks.map((template, index) => [template.id, `t${index + 1}`] as const))
-  // 队员级专家：只为声明了 expert 的行取 persona，取不到直接报错（不静默降级成普通队员）。
+  // 专家选择在成员创建时冻结；无可用 persona 的行保持普通成员。
   const expertPrompts = new Map<string, string>()
   for (const template of profile.members) {
     if (template.expert === undefined) continue
-    const resolved = await resolveExpertPersona({
+    const resolved = await resolveOptionalExpertPersona({
       ctx: input.ctx as unknown as { get(key: never): unknown },
       slug: template.expert,
       locale: clientLocaleOf(input.ctx) ?? DEFAULT_LOCALE,
     })
-    if (!resolved.ok) throw new Error(`member "${template.name}": ${resolved.error}`)
-    expertPrompts.set(template.name, resolved.executionPrompt)
+    if (resolved !== undefined) expertPrompts.set(template.name, resolved.executionPrompt)
   }
   const draft: TeamState = {
     name: input.teamName,
@@ -2652,7 +2723,7 @@ async function initializeProfileTeam(input: {
       provider: template.provider,
       model: template.model,
       reasoningEffort: template.reasoningEffort,
-      ...template.expert === undefined ? {} : { expert: template.expert },
+      ...expertPrompts.has(template.name) ? { expert: template.expert } : {},
       executionPrompt: [
         expertPrompts.get(template.name) ?? '',
         template.executionPrompt ?? profile.executionPrompt ?? input.config.executionPrompt ?? '',
@@ -2694,6 +2765,7 @@ async function initializeProfileTeam(input: {
       provider: member.provider,
       model: member.model,
       defaultModel: input.config.memberModel,
+      defaultProvider: input.config.memberLlmProvider,
       reasoningEffort: member.reasoningEffort,
       fallback: member.fallback,
     }, input.exec.signal)
@@ -2786,6 +2858,7 @@ async function initializeAgencyTeam(input: {
       provider: member.provider,
       model: member.model,
       defaultModel: input.config.memberModel,
+      defaultProvider: input.config.memberLlmProvider,
       reasoningEffort: member.reasoningEffort,
       fallback: member.fallback,
     }, input.exec.signal)
@@ -2831,7 +2904,7 @@ function parseFindings(value: unknown): ReviewFinding[] | undefined {
       // A blank optional file must be omitted, not persisted: durable-state
       // validation requires non-empty optional strings (issue #105 class).
       ...typeof raw['file'] === 'string' && raw['file'].trim() !== '' ? { file: raw['file'] } : {},
-      ...typeof raw['line'] === 'number' ? { line: raw['line'] } : {},
+      ...isValidFindingLine(raw['line']) ? { line: raw['line'] } : {},
       ...typeof raw['resolved'] === 'boolean' ? { resolved: raw['resolved'] } : {},
     }
   })
@@ -2882,7 +2955,7 @@ function parseCommandResults(value: unknown): CommandResult[] | undefined {
   })
 }
 
-export function applyQualityFollowUp(team: TeamState, closed: TeamTask): { created: TeamTask[]; escalated: boolean } {
+export function applyQualityFollowUp(team: TeamState, closed: TeamTask, snapshotPaths?: (paths: readonly string[]) => ArtifactSnapshot): { created: TeamTask[]; escalated: boolean; reason?: string; excludedFindings?: string[] } {
   const planned = planQualityFollowUp(team, closed)
   if (planned.escalated === true) team.escalated = true
   const created: TeamTask[] = []
@@ -2898,6 +2971,7 @@ export function applyQualityFollowUp(team: TeamState, closed: TeamTask): { creat
       if (team.tasks.some((item) => item.id === dependency)) return dependency
       return idBySubject.get(dependency) ?? dependency
     })
+    const contractSnapshot = draft.contractPaths?.length && snapshotPaths ? snapshotPaths(draft.contractPaths) : undefined
     const next: TeamTask = {
       id,
       subject: draft.subject ?? `${draft.kind}-round-${draft.round ?? 1}`,
@@ -2908,6 +2982,9 @@ export function applyQualityFollowUp(team: TeamState, closed: TeamTask): { creat
       createdAt: now,
       updatedAt: now,
       kind: draft.kind,
+      ...draft.description === undefined ? {} : { description: draft.description },
+      ...draft.findingSourceTaskIds === undefined ? {} : { findingSourceTaskIds: draft.findingSourceTaskIds },
+      ...contractSnapshot === undefined ? {} : { contractSnapshot },
       ...draft.round === undefined ? {} : { round: draft.round },
       ...draft.objective === undefined ? {} : { objective: draft.objective },
       ...draft.inScope === undefined ? {} : { inScope: draft.inScope },
@@ -2936,7 +3013,7 @@ export function applyQualityFollowUp(team: TeamState, closed: TeamTask): { creat
       task.updatedAt = now
     }
   }
-  return { created, escalated: planned.escalated === true }
+  return { created, escalated: planned.escalated === true, ...planned.reason === undefined ? {} : { reason: planned.reason }, ...planned.excludedFindings === undefined ? {} : { excludedFindings: planned.excludedFindings } }
 }
 
 /** Build the `memberRuntime` config handed to member helpers. */
@@ -2965,8 +3042,9 @@ function renderStatus(value: JsonValue): string {
       status: string
       activity: string
       spawn_error?: string
+      expert?: string
     }[]
-    tasks: { id: string; subject: string; status: string; assignee: string; dependencies: string[]; attempt: number; attempt_id: string; reassigning: boolean; seed_id?: string; output?: string; kind?: string; round?: number; verdict?: string; findings_open?: number; supplemental_evidence?: string }[]
+    tasks: { id: string; subject: string; status: string; assignee: string; dependencies: string[]; attempt: number; attempt_id: string; reassigning: boolean; seed_id?: string; output?: string; kind?: string; round?: number; verdict?: string; findings_open?: number; supplemental_evidence?: string; verdict_stale?: string; fixes?: string }[]
     captain_inbox: { from: string; content: string }[]
     member_inbox?: { from: string; content: string }[]
     member_inboxes: Record<string, { count: number; latest: string }>
@@ -2978,7 +3056,7 @@ function renderStatus(value: JsonValue): string {
     loop_summary?: string
     deliverable?: boolean
     coverage?: { goal_item: string; status: string; task_ids: string[] }[]
-    delivery?: { ok: boolean; blockers: string[] }
+    delivery?: { ok: boolean; blockers: string[]; warnings?: string[] }
   }
   const flags = [
     team.halted ? 'halted' : undefined,
@@ -2998,7 +3076,7 @@ function renderStatus(value: JsonValue): string {
       const route = member.provider && member.model ? ` · ${member.provider}/${member.model}` : ''
       const effort = member.reasoning_effort ? ` · reasoning ${member.reasoning_effort}` : ''
       const failure = member.spawn_error === undefined ? '' : `\n      start failed: ${member.spawn_error.slice(0, 400)}`
-      return `  - ${member.name} [${member.role}] ${member.status}/${member.activity}${route}${effort}${failure}`
+      return `  - ${member.name} [${member.role}] ${member.status}/${member.activity}${route}${effort}${member.expert ? ' · expert ' + member.expert : ''}${failure}`
     }),
     `Tasks (${team.tasks.length}):`,
     ...team.tasks.map((task) => {
@@ -3010,7 +3088,7 @@ function renderStatus(value: JsonValue): string {
       const kind = task.kind ? ` ${task.kind}` : ''
       const round = task.round === undefined ? '' : ` r${task.round}`
       const verdict = task.verdict === undefined ? '' : ` verdict ${task.verdict}`
-      return `  - ${task.id} [${task.status}]${kind}${round}${verdict} attempt ${task.attempt}${handoff}${seed} ${task.subject} → ${task.assignee || 'unassigned'}${deps}${output}${evidence}`
+      return `  - ${task.id} [${task.status}]${kind}${round}${verdict}${task.fixes ? ' fixes ' + task.fixes : ''}${task.verdict_stale ? ' ⚠ ' + task.verdict_stale : ''} attempt ${task.attempt}${handoff}${seed} ${task.subject} → ${task.assignee || 'unassigned'}${deps}${output}${evidence}`
     }),
     ...team.coverage === undefined || team.coverage.length === 0 ? [] : [
       'Coverage:',
@@ -3019,6 +3097,7 @@ function renderStatus(value: JsonValue): string {
     ...team.delivery === undefined ? [] : [
       `Delivery: ${team.delivery.ok ? 'ok' : `blocked (${team.delivery.blockers.join('; ')})`}`,
     ],
+    ...(team.delivery?.warnings ?? []).map(warning => `Gate warning: ${warning}`),
     `Captain inbox (${team.captain_inbox.length}):`,
     ...team.captain_inbox.map((message) => `  - [${message.from}] ${message.content}`),
     ...(team.member_inbox ?? []).map(message => `  - [${message.from}] ${message.content}`),

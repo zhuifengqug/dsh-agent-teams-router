@@ -42,11 +42,35 @@ declare module '@deepseek-ai/dsh-client-ui-chat/client' {
   }
 }
 
+/** One roster row folded from the create result. */
+export interface AgentTeamsCardMember {
+  readonly id: string
+  readonly name: string
+  readonly role: string
+}
+
 /** Folded team record (the node's business state). */
 export interface AgentTeamsNodeState {
   readonly teamId: string
   readonly name: string
   readonly accepted: boolean
+  readonly captainSessionId: string
+  readonly members: readonly AgentTeamsCardMember[]
+}
+
+/** Canonical team identity published by the host in tool-result metadata. */
+export interface AgentTeamsCreateIdentity {
+  readonly teamId: string
+  readonly captainSessionId: string
+  readonly members: readonly AgentTeamsCardMember[]
+}
+
+/** Mirror the host's Unicode key folding; the result metadata supplies exact ids. */
+export function teamKeyFromName(name: string): string {
+  const cleaned = name.normalize('NFC').trim().toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+  return cleaned === '' ? 'team' : cleaned
 }
 
 /** Parse the only create-call fields the historic card owns. */
@@ -58,11 +82,53 @@ export function parseAgentTeamsCreateArgs(value: string): { teamId: string; name
     }
     const name = parsed.name.trim()
     if (name === '') return undefined
-    const cleaned = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-    return { teamId: cleaned === '' ? 'team' : cleaned, name }
+    return { teamId: teamKeyFromName(name), name }
   } catch {
     return undefined
   }
+}
+
+/** Read the canonical identity the host attaches to a successful create result. */
+export function parseAgentTeamsCreateResult(meta: unknown): AgentTeamsCreateIdentity | undefined {
+  if (typeof meta !== 'object' || meta === null) return undefined
+  const record = meta as Record<string, unknown>
+  const teamId = typeof record.team_id === 'string' ? record.team_id.trim() : ''
+  if (teamId === '') return undefined
+  const captainSessionId = typeof record.captain_session_id === 'string' ? record.captain_session_id.trim() : ''
+  const members: AgentTeamsCardMember[] = []
+  if (Array.isArray(record.members)) {
+    for (const entry of record.members) {
+      if (typeof entry !== 'object' || entry === null) continue
+      const member = entry as Record<string, unknown>
+      const name = typeof member.name === 'string' ? member.name : ''
+      if (name === '') continue
+      members.push({
+        id: typeof member.id === 'string' ? member.id : '',
+        name,
+        role: typeof member.role === 'string' ? member.role : '',
+      })
+    }
+  }
+  return { teamId, captainSessionId, members }
+}
+
+/** Recover the host's canonical id from legacy running or staged result text. */
+export function teamIdFromCreateResultText(text: string): string | undefined {
+  const created = [...text.matchAll(/" created \(id ([^()\s]+)\) under /gu)].at(-1)?.[1]
+  if (created !== undefined && created !== '') return created
+  const stagedPath = [...text.matchAll(/plan created under (.+?)\. It is staged: /gu)].at(-1)?.[1]
+  if (stagedPath === undefined) return undefined
+  const segment = stagedPath.split(/[\\/]/u).filter(part => part !== '').at(-1)
+  return segment === undefined || segment === '' ? undefined : segment
+}
+
+/** Concatenate the text blocks of one durable tool-result message. */
+export function resultText(message: { readonly content: readonly unknown[] }): string {
+  return message.content
+    .filter((block): block is { type: 'text'; text: string } => typeof block === 'object' && block !== null
+      && 'type' in block && block.type === 'text' && 'text' in block && typeof block.text === 'string')
+    .map(block => block.text)
+    .join("\n")
 }
 
 /** Durable first-party tool events folded into one keyed Chat node. */
@@ -86,14 +152,25 @@ export const agentTeamsCardDefinition: ConversationNodeDefinition<AgentTeamsNode
     }
     const parsed = parseAgentTeamsCreateArgs(match.event.data.arguments)
     if (parsed === undefined) throw new Error('agent-teams card start requires valid create arguments')
-    return { ...parsed, accepted: false }
+    return { ...parsed, accepted: false, captainSessionId: '', members: [] }
   },
   update: (context, match) => {
     if (match.event.type !== 'tool/result') return context.state
     const failed = match.event.data.error !== undefined
       || toolResultFailed(match.event.data.message)
     if (failed) return context.state
-    return { ...context.state, accepted: true }
+    const canonical = parseAgentTeamsCreateResult(match.event.data.meta)
+    const legacyId = canonical === undefined
+      ? teamIdFromCreateResultText(resultText(match.event.data.message))
+      : undefined
+    if (canonical === undefined && legacyId === undefined) return { ...context.state, accepted: true }
+    return {
+      ...context.state,
+      accepted: true,
+      teamId: canonical?.teamId ?? legacyId ?? context.state.teamId,
+      captainSessionId: canonical?.captainSessionId ?? '',
+      members: canonical?.members ?? [],
+    }
   },
   buildViewNode: (context): ChatConversationViewNode | null => {
     if (context.start === undefined) return null
@@ -109,9 +186,9 @@ export const agentTeamsCardDefinition: ConversationNodeDefinition<AgentTeamsNode
       visibility: 'visible',
       data: {
         teamId: state.teamId,
-        captainSessionId: '',
+        captainSessionId: state.captainSessionId,
         teamName: state.name,
-        members: [],
+        members: state.members,
       },
     }
   },

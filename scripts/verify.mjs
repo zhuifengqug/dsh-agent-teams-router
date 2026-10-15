@@ -72,14 +72,22 @@ import {
   resolvePanelGeometry,
 } from '../lib/client/panel-geometry.js'
 import { memberArtUrl } from '../lib/client/artwork.js'
-import { parseAgentTeamsCreateArgs } from '../lib/client/agent-teams-card-definition.js'
+import { normalizeBlankOptionalTaskFields, isValidFindingLine } from '../lib/quality-gates.js'
+import { describeTeamStateDefect } from '../lib/state.js'
+import {
+  parseAgentTeamsCreateArgs,
+  parseAgentTeamsCreateResult,
+  resultText,
+  teamIdFromCreateResultText,
+  teamKeyFromName,
+} from '../lib/client/agent-teams-card-definition.js'
 import {
   AGENT_TEAMS_LOCALE_NAMESPACE,
   en as agentTeamsEn,
   zh as agentTeamsZh,
 } from '../lib/client/locales.js'
 import { openAgentTeamMember } from '../lib/client/session-navigation.js'
-import { steerCaptainReport } from '../lib/tools.js'
+import { registerAgentTeamsTools, steerCaptainReport } from '../lib/tools.js'
 import { parseProfileInvocation, resolveTeamProfile, formatProfilesForPrompt } from '../lib/profiles.js'
 import { memberPersona, memberWelcome } from '../lib/members.js'
 import { collectCompletedDependencyOutputs, formatDependencyOutputs, assignmentPrompt } from '../lib/scheduler.js'
@@ -535,6 +543,15 @@ check('pending -> in_progress denied', transitionError('pending', 'in_progress')
 check('in_progress -> completed allowed', transitionError('in_progress', 'completed') === undefined)
 check('completed -> in_progress denied', transitionError('completed', 'in_progress') !== undefined)
 check('same status is a no-op', transitionError('failed', 'failed') === undefined)
+check('finding line validator accepts nonnegative safe integers', isValidFindingLine(0) && isValidFindingLine(1176) && !isValidFindingLine(-1) && !isValidFindingLine(1.5))
+const sentinelTask = normalizeBlankOptionalTaskFields({
+  round: 0, reviewedAttempt: -1, attempt: -2,
+  findings: [{ id: 'F1', severity: 'high', problem: 'p', requiredFix: 'f', line: -1 }],
+})
+check('numeric no-line and sentinel fields self-heal', sentinelTask.round === undefined && sentinelTask.reviewedAttempt === undefined
+  && sentinelTask.attempt === undefined && sentinelTask.findings[0].line === undefined)
+check('wrong-typed numeric contract fields remain visible to validation', normalizeBlankOptionalTaskFields({ round: 'bad' }).round === 'bad')
+check('state diagnostic names finding line and task', describeTeamStateDefect({ id: 'bad', tasks: [{ id: 't2', findings: [{ line: -1 }] }] }, 'bad').includes('task "t2": findings[0].line -1'))
 
 console.log('3/8 dependency gating')
 const tasks = [
@@ -639,6 +656,36 @@ try {
       && JSON.stringify(repairedTask?.inScope) === JSON.stringify(['src/repair.ts']))
   check('cold-resume keeps non-blank optional quality fields (#105)',
     recoveredQuality?.tasks.find((item) => item.id === 't1')?.reviewedTaskId === 't2')
+  const dirtyFinding = {
+    ...team,
+    id: 'dirty-finding-line',
+    tasks: [{
+      id: 't1', subject: 'legacy finding', status: 'failed', dependencies: [],
+      attempt: -1, kind: 'review', round: 0, reviewedAttempt: -1,
+      findings: [{ id: 'F1', severity: 'high', problem: 'p', requiredFix: 'f', line: -1 }],
+      createdAt: Date.now(), updatedAt: Date.now(),
+    }],
+    taskSeq: 1,
+  }
+  await createTeamDir(stateRoot, dirtyFinding)
+  const recoveredFinding = await readTeam(stateRoot, dirtyFinding.id)
+  const healedFinding = recoveredFinding?.tasks[0]
+  check('#188 numeric sentinels self-heal from persisted team.json', healedFinding?.attempt === undefined
+    && healedFinding?.round === undefined && healedFinding?.reviewedAttempt === undefined
+    && healedFinding?.findings?.[0]?.line === undefined)
+  await removeTeamDir(stateRoot, dirtyFinding.id)
+  const malformedFinding = {
+    ...dirtyFinding,
+    id: 'malformed-finding-line',
+    tasks: [{ ...dirtyFinding.tasks[0], attempt: 0, round: 1, reviewedAttempt: 0,
+      findings: [{ ...dirtyFinding.tasks[0].findings[0], line: '-1' }] }],
+  }
+  await createTeamDir(stateRoot, malformedFinding)
+  let findingDiagnostic = ''
+  try { await readTeam(stateRoot, malformedFinding.id) }
+  catch (error) { findingDiagnostic = String(error) }
+  check('#188 wrong-typed line remains invalid and diagnostic names its field', /task "t1": findings\[0\]\.line/u.test(findingDiagnostic))
+  await removeTeamDir(stateRoot, malformedFinding.id)
   await removeTeamDir(stateRoot, dirtyQuality.id)
 
   // Recovery only removes blank strings. Other malformed values must still
@@ -1279,6 +1326,42 @@ check(
     === JSON.stringify({ teamId: 'repo-review-2w', name: 'Repo Review 2W!' }),
 )
 check('malformed create tool arguments do not create a card', parseAgentTeamsCreateArgs('{bad') === undefined)
+check('agent team cards preserve the host Unicode team key', teamKeyFromName(' 数据团队 ') === '数据团队')
+check('agent team cards read canonical create metadata', JSON.stringify(parseAgentTeamsCreateResult({
+  team_id: '数据团队',
+  captain_session_id: 'captain-1',
+  members: [{ id: 'member-1', name: '阿明', role: '工程师' }],
+})) === JSON.stringify({
+  teamId: '数据团队',
+  captainSessionId: 'captain-1',
+  members: [{ id: 'member-1', name: '阿明', role: '工程师' }],
+}))
+check('agent team cards recover canonical running ids from legacy text', teamIdFromCreateResultText('Team "数据团队" created (id 数据团队) under C:\\work\\数据团队. You are the captain.') === '数据团队')
+check('agent team cards recover canonical staged ids from legacy text', teamIdFromCreateResultText('Team "数据团队" plan created under C:\\work\\数据团队. It is staged: finish the roster.') === '数据团队')
+check('agent team cards concatenate only text result blocks', resultText({ content: [{ type: 'text', text: 'a' }, { type: 'json', value: 1 }, { type: 'text', text: 'b' }] }) === 'a\nb')
+
+const toolDefinitions = []
+const noop = () => {}
+registerAgentTeamsTools({
+  on: () => noop,
+  effect: setup => setup(),
+  logger: { warn: noop, debug: noop },
+  tools: { register: definition => toolDefinitions.push(definition) },
+  subagents: {
+    followup: async () => {}, start: async () => ({}), startContinuable: async () => ({}),
+    sendMessage: async () => {}, registerContinuableSetup: () => noop,
+  },
+}, { stateDir: '.agent-teams', memberProvider: 'spawn', memberMaxDepth: 0, maxMembers: 8, profiles: {} })
+const createTool = toolDefinitions.find(definition => definition.name === 'agent_teams_create')
+const createMeta = createTool?.output?.presentationMeta?.({}, {
+  team_id: '数据团队', team_name: '数据团队', captain_session_id: 'captain-1', phase: 'running',
+  members: [{ member_id: 'member-1', member_name: '阿明', member_role: '工程师', status: 'idle' }],
+})
+check('agent_teams_create publishes canonical identity metadata', createTool?.output?.presentationMeta !== undefined
+  && createTool.output.schema.required.includes('captain_session_id')
+  && createTool.output.schema.properties.members.items.properties.member_role !== undefined
+  && createMeta?.team_id === '数据团队' && createMeta.captain_session_id === 'captain-1'
+  && JSON.stringify(createMeta.members) === JSON.stringify([{ id: 'member-1', name: '阿明', role: '工程师', status: 'idle' }]))
 
 const captainDeliveries = []
 const captainSteered = steerCaptainReport(
@@ -1317,9 +1400,15 @@ const routeDefaultEfforts = new Map([
   ['captain-provider/captain-model', 'high'],
   ['captain-provider/configured-member-model', 'medium'],
   ['other-provider/other-model', 'low'],
+  ['other-provider/configured-member-model', 'medium'],
+  ['other-provider/configured-member-model', 'medium'],
 ])
 const selectionContext = {
   llm: {
+    listProviders: () => [{ id: 'captain-provider', name: 'Captain' }, { id: 'other-provider', name: 'Other' }],
+    listModels: async provider => provider === 'captain-provider'
+      ? [{ provider, id: 'captain-model', name: 'Captain' }]
+      : [{ provider, id: 'other-model', name: 'Other' }, { provider, id: 'configured-member-model', name: 'Configured' }],
     resolveCallConfig: async (config) => {
       resolvedCalls.push(config)
       const route = `${config.provider}/${config.model}`
@@ -1358,11 +1447,32 @@ const defaultedSelection = await resolveMemberLlmSelection(selectionContext, cap
 })
 check(
   'plugin memberModel route uses that target model default effort',
-  defaultedSelection.provider === 'captain-provider'
+  defaultedSelection.provider === 'other-provider'
     && defaultedSelection.model === 'configured-member-model'
     && defaultedSelection.reasoningEffort === 'medium'
     && resolvedCalls.at(-1)?.reasoningEffort === undefined,
 )
+for (const owners of [[], ['one', 'two']]) {
+  const ctx = { llm: {
+    listProviders: () => owners.map(id => ({ id })),
+    listModels: async provider => [{ id: provider === 'captain-provider' ? 'captain-model' : 'configured' }],
+    resolveCallConfig: async config => config,
+  } }
+  let rejected = false
+  try { await resolveMemberLlmSelection(ctx, captain, { defaultModel: 'configured' }) } catch (error) { rejected = /memberLlmProvider/.test(String(error)) }
+  check('model-only default rejects zero or ambiguous provider owner: ' + owners.length, rejected)
+}
+const dynamic = await resolveMemberLlmSelection({ llm: { listModels: async () => [], resolveCallConfig: async config => config } }, captain, { defaultModel: 'org/model' })
+check('empty model catalog preserves dynamic model ids containing slash', dynamic.model === 'org/model' && dynamic.provider === 'captain-provider')
+const explicitSlash = await resolveMemberLlmSelection({ llm: { listModels: async () => { throw Error('unexpected directory query') }, resolveCallConfig: async config => config } }, captain, { provider: 'explicit', model: 'org/model', defaultProvider: 'default', defaultModel: 'other' })
+check('explicit slash model id keeps explicit route and avoids ownership inference', explicitSlash.provider === 'explicit' && explicitSlash.model === 'org/model')
+
+const configuredProviderSelection = await resolveMemberLlmSelection(selectionContext, captain, {
+  defaultModel: 'configured-member-model',
+  defaultProvider: 'other-provider',
+})
+check('configured memberLlmProvider pairs with memberModel', configuredProviderSelection.provider === 'other-provider'
+  && configuredProviderSelection.model === 'configured-member-model')
 const explicitEffortSelection = await resolveMemberLlmSelection(selectionContext, captain, {
   provider: 'other-provider',
   model: 'other-model',
@@ -1373,6 +1483,13 @@ check(
   explicitEffortSelection.reasoningEffort === 'high'
     && resolvedCalls.at(-1)?.reasoningEffort === 'high',
 )
+const explicitProviderSelection = await resolveMemberLlmSelection(selectionContext, captain, {
+  provider: 'captain-provider',
+  model: 'captain-model',
+  defaultModel: 'configured-member-model',
+})
+check('explicit member route takes precedence over plugin defaults', explicitProviderSelection.provider === 'captain-provider'
+  && explicitProviderSelection.model === 'captain-model')
 const forcedDefaultSelection = await resolveMemberLlmSelection(selectionContext, captain, {
   reasoningEffort: 'default',
 })

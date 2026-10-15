@@ -223,7 +223,8 @@ function taskTitle(task: ActivityTask, model: string): string {
   const extras = [
     task.kind,
     task.round === undefined ? undefined : `r${task.round}`,
-    task.verdict,
+    task.verdictStale === undefined ? task.verdict : `⚠ ${task.verdict ?? task.kind ?? task.status}`,
+    task.verdictStale,
     route === '' ? undefined : route,
     routing.difficulty === undefined ? undefined : `difficulty ${routing.difficulty}`,
     routing.routeStatus === undefined ? undefined : `route ${routing.routeStatus}`,
@@ -488,6 +489,7 @@ function DependencyMap({ tasks, members, t, discarded = false, workspace = false
                       ? { height: nodeHeight }
                       : { left: x, top: y, width: nodeWidth, height: nodeHeight }}
                     data-task-id={task.id}
+                    data-verdict-stale={task.verdictStale === undefined ? undefined : true}
                     data-state={discarded ? 'cancelled' : taskTone(task.state, task.status)}
                     data-task-model={model || undefined}
                     data-difficulty={routing.difficulty}
@@ -504,7 +506,7 @@ function DependencyMap({ tasks, members, t, discarded = false, workspace = false
                     onBlur={() => { setKeyboardTaskId(null) }}
                   >
                     <span className={css.dagNodeHead}>
-                      <span className={css.dagNodeDot} />{task.id}
+                      <span className={css.dagNodeDot} />{task.id}{task.verdictStale !== undefined && <span aria-label={task.verdictStale} title={task.verdictStale}>⚠</span>}
                       {/* D.4 strengthened difficulty badge: the existing
                           `dagOwner` slot keeps its label role and DOM probes,
                           the mono tier styling lands via the CSS below. */}
@@ -540,6 +542,7 @@ function DependencyMap({ tasks, members, t, discarded = false, workspace = false
             </div>
           </div>
           <section className={css.taskDetail} data-task-detail={detailTask.id}>
+            {detailTask.verdictStale !== undefined && <span role="status">⚠ {detailTask.verdictStale}</span>}
             <span className={css.taskDetailHead}>
               <span className={css.taskDetailId}>{detailTask.id}</span>
               <span className={css.taskDetailSubject} title={detailTask.subject}>{detailTask.subject.replace(/^开发\s*/u, '')}</span>
@@ -803,6 +806,7 @@ export function TeamSection({ team, modelDirectory, onContinuePlanning, onDiscar
                     <span className={css.memberLine}>
                       <span className={css.memberName}>{member.name}</span>
                       {member.role !== '' && <span className={css.memberRole}>{member.role}</span>}
+                      {member.expert !== undefined && <span className={css.memberRole} data-member-expert={member.expert} title={member.expert}>{t('member.expert', { expert: member.expert })}</span>}
                       {/* Inline member model badge: compact visible label, full route in
                           title/aria-label (accessible tooltip) and the data-member-model
                           DOM probe; noninteractive span, no tab stop. */}

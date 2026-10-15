@@ -70,6 +70,8 @@ export interface MemberLlmSelectionRequest {
   model?: string
   /** Plugin-level member model default. */
   defaultModel?: string
+  /** Provider paired with the plugin-level member model default. */
+  defaultProvider?: string
   /** Explicit reasoning effort; "default" selects the target model's default effort. */
   reasoningEffort?: string
   /** Configured fallback route. */
@@ -153,7 +155,58 @@ export function steerCaptainReport(captain: Pick<Agent, 'steer'>, from: string, 
 interface FailedMemberAttempt {
   readonly captainSessionId: string
   readonly memberId: string
-  readonly task?: Pick<TeamTask, 'id' | 'attempt' | 'attemptId'>
+  readonly task?: Pick<TeamTask, 'id' | 'attempt' | 'attemptId' | 'status' | 'subject'>
+}
+
+export type MemberFailureDisposition = 'failed_attempt' | 'noted_settled' | 'ignored'
+
+export function classifyMemberFailure(
+  observed: FailedMemberAttempt,
+  current: {
+    member?: Pick<TeamMember, 'id' | 'status'>
+    openTask?: Pick<TeamTask, 'id' | 'attempt' | 'attemptId'>
+    taskRecord?: Pick<TeamTask, 'id' | 'attempt' | 'attemptId' | 'status' | 'subject'>
+    latestStartedTask?: Pick<TeamTask, 'id'>
+  },
+): MemberFailureDisposition {
+  if (current.member?.id !== observed.memberId || current.member.status === 'removed') return 'ignored'
+  if (observed.task === undefined) {
+    return current.openTask === undefined && current.member.status === 'working'
+      ? 'noted_settled'
+      : 'ignored'
+  }
+  if (observed.task.status === 'claimed' || observed.task.status === 'in_progress') {
+    if (current.openTask !== undefined) {
+      return current.openTask.id === observed.task.id
+        && current.openTask.attemptId === observed.task.attemptId
+        && current.openTask.attempt === observed.task.attempt
+        ? 'failed_attempt'
+        : 'ignored'
+    }
+    const settled = current.taskRecord
+    return current.latestStartedTask?.id === observed.task.id
+      && settled?.id === observed.task.id
+      && settled.attemptId === observed.task.attemptId
+      && settled.attempt === observed.task.attempt
+      && TERMINAL_TASK_STATUSES.includes(settled.status)
+      ? 'noted_settled'
+      : 'ignored'
+  }
+  const record = current.taskRecord
+  if (!TERMINAL_TASK_STATUSES.includes(observed.task.status) || current.openTask !== undefined
+    || current.latestStartedTask?.id !== observed.task.id || record === undefined) return 'ignored'
+  return record.id === observed.task.id
+    && record.attemptId === observed.task.attemptId
+    && record.attempt === observed.task.attempt
+    && record.status === observed.task.status
+    ? 'noted_settled'
+    : 'ignored'
+}
+
+/** Most recently active owned task; task creation order is not execution order. */
+function latestMemberTask(tasks: readonly TeamTask[], memberName: string): TeamTask | undefined {
+  return tasks.filter(task => task.assignee === memberName && task.status !== 'pending').reduce<TeamTask | undefined>((latest, task) =>
+    latest === undefined || task.updatedAt >= latest.updatedAt ? task : latest, undefined)
 }
 
 /** Record a final turn failure, never an intermediate request retry. */
@@ -165,35 +218,41 @@ export async function failMemberOpenAttempt(
   failure: { readonly code: string; readonly message: string },
   fallbackSession: Session,
   observed: FailedMemberAttempt,
-): Promise<boolean> {
+): Promise<MemberFailureDisposition | false> {
   const summary = `${failure.message} (code ${failure.code})`
   const lockKey = `team:${stateRoot}:${teamId}`
   const prepared = await withTeamLock(lockKey, async () => {
     const team = await readTeam(stateRoot, teamId)
     if (team === undefined || team.halted === true || team.captainSessionId !== observed.captainSessionId) return
     const member = team.members.find(candidate => candidate.name === memberName
-      && candidate.id === observed.memberId && candidate.status !== 'removed')
+      && candidate.id === observed.memberId)
     if (member === undefined) return
-    const task = team.tasks.find(candidate => candidate.assignee === memberName
+    const openTask = team.tasks.find(candidate => candidate.assignee === memberName
       && (candidate.status === 'claimed' || candidate.status === 'in_progress'))
-    // A reassign, completion, or recreated member may win the lock while the
-    // final error is queued. Only the capability observed at that event may fail.
-    if (task?.id !== observed.task?.id || task?.attemptId !== observed.task?.attemptId
-      || task?.attempt !== observed.task?.attempt) return
-    if (task === undefined && member.status !== 'working') return
+    const taskRecord = observed.task === undefined
+      ? undefined
+      : team.tasks.find(candidate => candidate.id === observed.task?.id)
+    const latestStartedTask = latestMemberTask(team.tasks, memberName)
+    const disposition = classifyMemberFailure(observed, { member, openTask, taskRecord, latestStartedTask })
+    if (disposition === 'ignored') return
+    const task = disposition === 'failed_attempt' ? openTask : undefined
     if (task !== undefined) {
       task.status = 'failed'
       task.output = summary
       task.updatedAt = Date.now()
     }
-    if (ctx.agents.get(brandedSessionId(member.id))?.status !== 'running') member.status = 'idle'
+    if (disposition === 'failed_attempt' && ctx.agents.get(brandedSessionId(member.id))?.status !== 'running') member.status = 'idle'
+    const settled = disposition === 'noted_settled' ? taskRecord : undefined
+    const detail = task !== undefined
+      ? `Task ${task.id} ("${task.subject}") was marked failed; reassign it or retry when ready.`
+      : settled === undefined
+        ? 'No open attempt was owned; no task state was changed.'
+        : `Task ${settled.id} ("${settled.subject}") had already closed as ${settled.status}; its record was left unchanged.`
     const message = {
-      ...createMessage(memberName, CAPTAIN_KEY, task === undefined
-        ? `Member "${memberName}" hit an unrecoverable turn failure: ${summary}. No open attempt was owned.`
-        : `Member "${memberName}" hit an unrecoverable turn failure: ${summary}. Task ${task.id} ("${task.subject}") was marked failed; reassign it or retry when ready.`),
+      ...createMessage(memberName, CAPTAIN_KEY, `Member "${memberName}" hit an unrecoverable turn failure: ${summary}. ${detail}`),
       deliveryClaimedAt: Date.now(),
     }
-    await writeTeam(stateRoot, team)
+    if (disposition === 'failed_attempt') await writeTeam(stateRoot, team)
     await appendMailbox(stateRoot, team.id, CAPTAIN_KEY, message)
     if (task !== undefined) {
       appendTeamEvent(ctx, captainSessionOf(ctx, team.captainSessionId, fallbackSession), 'agent-teams/task-updated', {
@@ -208,7 +267,7 @@ export async function failMemberOpenAttempt(
       content: message.content,
       ts: message.ts,
     })
-    return { captainSessionId: team.captainSessionId, message }
+    return { captainSessionId: team.captainSessionId, message, disposition }
   })
   if (prepared === undefined) return false
   // Use the same lease/acknowledgment contract as send_message, outside the
@@ -218,7 +277,7 @@ export async function failMemberOpenAttempt(
   await withTeamLock(lockKey, () => delivered
     ? markMailboxDelivered(stateRoot, teamId, CAPTAIN_KEY, [prepared.message.id])
     : releaseMailboxDelivery(stateRoot, teamId, CAPTAIN_KEY, [prepared.message.id]))
-  return true
+  return prepared.disposition
 }
 
 async function updateFallbackState(
@@ -289,6 +348,7 @@ export async function resolveMemberLlmSelection(
   const explicitProvider = request.provider?.trim()
   const explicitModel = request.model?.trim()
   const defaultModel = request.defaultModel?.trim()
+  const defaultProvider = request.defaultProvider?.trim()
   const explicitEffort = request.reasoningEffort?.trim()
   const fallback = request.fallback
   if (request.provider !== undefined && explicitProvider === '') {
@@ -300,6 +360,9 @@ export async function resolveMemberLlmSelection(
   if (request.defaultModel !== undefined && defaultModel === '') {
     throw new Error('configured memberModel must not be empty')
   }
+  if (request.defaultProvider !== undefined && defaultProvider === '') {
+    throw new Error('configured memberLlmProvider must not be empty')
+  }
   if (request.reasoningEffort !== undefined && explicitEffort === '') {
     throw new Error('member reasoning effort must not be empty')
   }
@@ -310,10 +373,28 @@ export async function resolveMemberLlmSelection(
   const current = captain.session.requestHeader()?.config
   const currentProvider = current?.provider ?? captain.options.provider
   const currentModel = current?.model ?? captain.options.model
-  const provider = explicitProvider ?? currentProvider
+  let provider = explicitProvider ?? defaultProvider ?? currentProvider
   const model = explicitModel ?? defaultModel ?? currentModel
   if (provider === undefined || model === undefined) {
     throw new Error('cannot resolve the member LLM route from the current captain session')
+  }
+
+  // Only a model-only plugin default may discover its provider owner. Explicit
+  // member routes and configured provider/model pairs remain authoritative.
+  if (currentProvider !== undefined && explicitProvider === undefined && explicitModel === undefined
+    && defaultModel !== undefined && defaultProvider === undefined) {
+    const captainModels = await ctx.llm.listModels(currentProvider)
+    if (captainModels.length > 0 && !captainModels.some(item => item.id === model)) {
+      const owners: string[] = []
+      for (const candidate of ctx.llm.listProviders()) {
+        if (signal?.aborted === true) throw signal.reason ?? new Error('member model resolution was cancelled')
+        const models = await ctx.llm.listModels(candidate.id)
+        if (models.some(item => item.id === model)) owners.push(candidate.id)
+      }
+      if (owners.length === 1) provider = owners[0]!
+      else if (owners.length > 1) throw new Error(`configured member model "${model}" is ambiguous across providers: ${owners.join(', ')}; set memberLlmProvider`)
+      else throw new Error(`configured member model "${model}" is not advertised by a provider; set memberLlmProvider`)
+    }
   }
 
   // Effort ids belong to one exact provider/model capability. Preserve the
@@ -401,6 +482,7 @@ export function installMemberSelectionRuntime(
     }
 
     let lastFailedTurn: number | undefined
+    let settledFailureTaskId: string | undefined
     // Harness emits agent/error only after request recovery is exhausted. In
     // particular, llm-retry's "always" policy calls downstream request-error
     // listeners before it retries; that waterfall cannot declare a turn dead.
@@ -412,18 +494,22 @@ export function installMemberSelectionRuntime(
         // can let a captain reassign it or replace the member/team generation.
         const snapshot = readTeamSync(stateRoot, teamId)
         if (snapshot?.captainSessionId !== parentSessionId) return
-        const member = snapshot.members.find(item => item.id === child.id && item.name === memberName && item.status !== 'removed')
+        const member = snapshot.members.find(item => item.id === child.id && item.name === memberName)
         if (member === undefined) return
-        const task = snapshot.tasks.find(item => item.assignee === memberName
-          && (item.status === 'claimed' || item.status === 'in_progress'))
+        const assigned = snapshot.tasks.filter(item => item.assignee === memberName && item.status !== 'pending')
+        const task = assigned.find(item => item.status === 'claimed' || item.status === 'in_progress')
+          ?? latestMemberTask(snapshot.tasks, memberName)
         const failure = payload.error instanceof LlmError ? payload.error.failure : {
           code: 'UNKNOWN',
           message: payload.error instanceof Error ? payload.error.message : String(payload.error),
         }
         const recorded = await failMemberOpenAttempt(ctx, stateRoot, teamId, memberName, failure, child.session, {
-          captainSessionId: parentSessionId, memberId: child.id, task,
+          captainSessionId: parentSessionId,
+          memberId: child.id,
+          ...task === undefined ? {} : { task: { id: task.id, attempt: task.attempt, attemptId: task.attemptId, status: task.status, subject: task.subject } },
         })
-        if (!recorded) return
+        if (recorded === false || recorded === 'ignored') return
+        settledFailureTaskId = recorded === 'noted_settled' ? task?.id : undefined
         // The final-error event precedes driver quiescence. Observe the real
         // lifecycle and kick explicitly even if its idle event was missed.
         // Never force an active Agent's status to idle or retry the failed task.
@@ -431,7 +517,9 @@ export function installMemberSelectionRuntime(
         await withTeamLock(`team:${stateRoot}:${teamId}`, async () => {
           const team = await readTeam(stateRoot, teamId)
           const current = team?.members.find(item => item.id === child.id && item.name === memberName && item.status !== 'removed')
-          if (team?.captainSessionId !== parentSessionId || current === undefined || child.status !== 'idle') return
+          const newest = team === undefined ? undefined : latestMemberTask(team.tasks, memberName)
+          if (team?.captainSessionId !== parentSessionId || current === undefined || child.status !== 'idle'
+            || (settledFailureTaskId !== undefined && newest?.id !== settledFailureTaskId)) return
           if (current.status !== 'idle') {
             current.status = 'idle'
             await writeTeam(stateRoot, team)

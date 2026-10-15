@@ -40,12 +40,14 @@ import {
   assembleAgencyTeam,
   clientLocaleOf,
   composeExecutionPrompt,
+  listAgencyExperts,
   listEnabledExperts,
   loadAgencyTeam,
   normalizeAgencyPlanTasks,
   resolveAgencyCreateRequest,
   resolveAgencyTeam,
   resolveExpertPersona,
+  resolveOptionalExpertPersona,
 } from '../lib/agency-bridge.js'
 import { usageSectionText } from '../lib/index.js'
 import { registerAgentTeamsTools } from '../lib/tools.js'
@@ -545,6 +547,158 @@ test('回归：两条创建路径共用同一个「解析成员线路 → 校验
       assert.equal(body.includes(retired), false, `${label}: retired route symbol ${retired} must be gone`)
     }
   }
+})
+
+test('队员级专家：完整清单保留 disabled，个人服务不依赖 teams，发现阶段零 persona 读取', async () => {
+  const experts = [
+    { slug: 'growth-hacker', division: 'marketing', description: 'Design growth experiments' },
+    { slug: 'data-analyst', division: 'data', description: 'Read funnel data' },
+    { slug: 'plain' },
+  ]
+  const { services, calls } = makeServices({
+    experts,
+    enabled: ['data-analyst', 'not-in-catalog'],
+    personas: { 'data-analyst': 'You read funnels.' },
+  })
+  delete services[AGENCY_SERVICE_KEYS.teams]
+  const queried = []
+  const ctx = { get: (key) => { queried.push(key); return services[key] } }
+  const listed = await listAgencyExperts(ctx)
+  assert.deepEqual(listed, {
+    available: true,
+    experts: [
+      { slug: 'growth-hacker', division: 'marketing', description: 'Design growth experiments', enabled: false },
+      { slug: 'data-analyst', division: 'data', description: 'Read funnel data', enabled: true },
+      { slug: 'plain', division: '', description: '', enabled: false },
+    ],
+  })
+  assert.deepEqual(queried, [AGENCY_SERVICE_KEYS.library])
+  assert.equal(calls.catalog, 1, '完整清单仅取一次 catalog')
+  assert.equal(calls.snapshot, 0, '个人发现不读取团队清单')
+  assert.deepEqual(calls.getPrompt, [], '发现清单不预加载 persona')
+
+  const enabled = await listEnabledExperts(ctx)
+  assert.deepEqual(enabled, {
+    available: true,
+    experts: [{ slug: 'data-analyst', division: 'data', description: 'Read funnel data' }],
+  }, '旧接口只过滤 enabled，不改变行契约')
+  assert.equal(calls.catalog, 2, '每次目录调用只读取一次')
+  assert.deepEqual(calls.getPrompt, [])
+
+  delete services[AGENCY_SERVICE_KEYS.persona]
+  assert.deepEqual(await listAgencyExperts(ctx), listed, '只剩 library 时目录仍完整可用')
+  assert.equal(calls.catalog, 3)
+  assert.deepEqual(calls.getPrompt, [])
+})
+
+test('队员级专家：完整清单在缺服务、错形状和 catalog 调用失败时返回不可用', async () => {
+  const cases = [
+    undefined,
+    ctxWith({}),
+    ctxWith({
+      [AGENCY_SERVICE_KEYS.library]: {},
+      [AGENCY_SERVICE_KEYS.persona]: { getPrompt: async () => ({ prompt: 'p' }) },
+    }),
+    ctxWith({
+      [AGENCY_SERVICE_KEYS.library]: { catalog: async () => { throw new Error('catalog boom') } },
+      [AGENCY_SERVICE_KEYS.persona]: { getPrompt: async () => ({ prompt: 'p' }) },
+    }),
+    ctxWith({
+      [AGENCY_SERVICE_KEYS.library]: { catalog: async () => ({ experts: DEMO_EXPERTS }) },
+      [AGENCY_SERVICE_KEYS.persona]: { getPrompt: async () => ({ prompt: 'p' }) },
+    }),
+    { get: () => { throw new Error('service boom') } },
+  ]
+  for (const ctx of cases) {
+    const listed = await listAgencyExperts(ctx)
+    assert.equal(listed.available, false)
+    assert.equal(typeof listed.reason, 'string')
+  }
+})
+
+test('队员级专家：可选解析未选择、unknown、disabled 时静默回落且不取 persona', async () => {
+  const { services, calls } = makeServices({
+    experts: DEMO_EXPERTS,
+    enabled: ['data-analyst'],
+    personas: { 'growth-hacker': 'Disabled persona', 'data-analyst': 'Enabled persona' },
+  })
+  delete services[AGENCY_SERVICE_KEYS.teams]
+  let serviceReads = 0
+  const ctx = { get: (key) => { serviceReads += 1; return services[key] } }
+  assert.equal(await resolveOptionalExpertPersona({ ctx, locale: DEFAULT_LOCALE }), undefined)
+  assert.equal(await resolveOptionalExpertPersona({ ctx, slug: '   ', locale: DEFAULT_LOCALE }), undefined)
+  assert.equal(serviceReads, 0, '省略 slug 时不探测服务')
+  assert.equal(calls.catalog, 0, '省略 slug 时不读取 catalog')
+
+  assert.equal(await resolveOptionalExpertPersona({ ctx, slug: 'nobody', locale: DEFAULT_LOCALE }), undefined)
+  assert.equal(await resolveOptionalExpertPersona({ ctx, slug: 'growth-hacker', locale: DEFAULT_LOCALE }), undefined)
+  assert.equal(calls.catalog, 2, '明确 slug 每次只读取一个目录')
+  assert.deepEqual(calls.getPrompt, [], '未知和停用专家不读取 persona')
+  assert.equal(calls.snapshot, 0)
+})
+
+test('队员级专家：可选解析缺服务、调用错误、缺 persona 均静默 undefined 且无日志', async () => {
+  const events = []
+  const logger = new Proxy({}, { get: (_target, method) => (...args) => events.push({ method, args }) })
+  const contexts = [undefined, ctxWith({}), { get: () => { throw new Error('service boom') } }]
+  for (const absent of [AGENCY_SERVICE_KEYS.library, AGENCY_SERVICE_KEYS.persona]) {
+    const { services } = makeServices({ experts: DEMO_EXPERTS, enabled: ['growth-hacker'] })
+    delete services[absent]
+    contexts.push(ctxWith(services))
+  }
+  contexts.push(ctxWith({
+    [AGENCY_SERVICE_KEYS.library]: { catalog: async () => { throw new Error('catalog boom') } },
+    [AGENCY_SERVICE_KEYS.persona]: { getPrompt: async () => ({ prompt: 'p' }) },
+  }))
+  contexts.push(ctxWith({
+    [AGENCY_SERVICE_KEYS.library]: { catalog: async () => ({ experts: DEMO_EXPERTS, enabled: [] }) },
+    [AGENCY_SERVICE_KEYS.persona]: {},
+  }))
+  contexts.push(ctxWith({
+    [AGENCY_SERVICE_KEYS.library]: { catalog: async () => ({ experts: DEMO_EXPERTS, enabled: ['growth-hacker'] }) },
+    [AGENCY_SERVICE_KEYS.persona]: { getPrompt: async () => { throw new Error('persona boom') } },
+  }))
+  for (const prompt of [undefined, {}, { prompt: '' }, { prompt: '   ' }]) {
+    contexts.push(ctxWith({
+      [AGENCY_SERVICE_KEYS.library]: { catalog: async () => ({ experts: DEMO_EXPERTS, enabled: ['growth-hacker'] }) },
+      [AGENCY_SERVICE_KEYS.persona]: { getPrompt: async () => prompt },
+    }))
+  }
+  for (const ctx of contexts) {
+    const silent = ctx === undefined ? undefined : { ...ctx, logger }
+    assert.equal(await resolveOptionalExpertPersona({ ctx: silent, slug: 'growth-hacker', locale: DEFAULT_LOCALE }), undefined)
+  }
+  assert.deepEqual(events, [], '回落路径不输出日志')
+})
+
+test('队员级专家：一次明确 slug 仅取该 persona，保留 locale、长度上限和服务 this', async () => {
+  const { services, calls } = makeServices({
+    experts: DEMO_EXPERTS,
+    enabled: ['growth-hacker', 'data-analyst'],
+    personas: { 'growth-hacker': 'You run growth experiments.', 'data-analyst': 'You read funnels.' },
+  })
+  delete services[AGENCY_SERVICE_KEYS.teams]
+  const resolved = await resolveOptionalExpertPersona({ ctx: ctxWith(services), slug: '  growth-hacker  ', locale: '  en  ' })
+  assert.deepEqual(resolved, { slug: 'growth-hacker', executionPrompt: 'You run growth experiments.' })
+  assert.equal(calls.catalog, 1)
+  assert.deepEqual(calls.getPrompt, [{ slug: 'growth-hacker', division: 'marketing', locale: 'en' }])
+  assert.equal(calls.snapshot, 0)
+
+  const stateful = ctxWith({
+    [AGENCY_SERVICE_KEYS.library]: {
+      snapshot: { experts: [{ slug: 'solo', division: 'ops' }], enabled: ['solo'] },
+      catalog() { return this.snapshot },
+    },
+    [AGENCY_SERVICE_KEYS.persona]: {
+      prompt: 'x'.repeat(PERSONA_MAX_CHARS + 3),
+      getPrompt(slug, division, locale) {
+        assert.deepEqual([slug, division, locale], ['solo', 'ops', DEFAULT_LOCALE])
+        return { prompt: this.prompt }
+      },
+    },
+  })
+  const truncated = await resolveOptionalExpertPersona({ ctx: stateful, slug: 'solo', locale: '   ' })
+  assert.deepEqual(truncated, { slug: 'solo', executionPrompt: 'x'.repeat(PERSONA_MAX_CHARS) })
 })
 
 test('队员级专家：只读清单只列已启用项，服务缺席时给出原因而不是抛错', async () => {

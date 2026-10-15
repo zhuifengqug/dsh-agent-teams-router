@@ -23,7 +23,7 @@ async function eventually(predicate) {
   assert.fail('terminal failure did not settle')
 }
 
-async function fixture(t, { captainStatus = 'idle', fallback, captainOffline = false, rejectDelivery = false } = {}) {
+async function fixture(t, { captainStatus = 'idle', fallback, captainOffline = false, rejectDelivery = false, taskStatus = 'in_progress', memberStatus = 'working' } = {}) {
   const workspace = await mkdtemp(join(tmpdir(), 'dsh-member-failure-'))
   const pendingFailures = []
   let settleOnCleanup = () => {}
@@ -63,8 +63,8 @@ async function fixture(t, { captainStatus = 'idle', fallback, captainOffline = f
   }
   await createTeamDir(stateRoot, {
     id: 'team', name: 'Team', captainSessionId: captain.id, createdAt: 1, taskSeq: 1,
-    members: [{ id: child.id, name: 'worker', status: 'working', joinedAt: 1, provider: 'fake', model: 'primary' }],
-    tasks: [{ id: 't1', subject: 'work', assignee: 'worker', status: 'in_progress', dependencies: [], attempt: 1, attemptId: 'a1', createdAt: 1, updatedAt: 1 }],
+    members: [{ id: child.id, name: 'worker', status: memberStatus, joinedAt: 1, provider: 'fake', model: 'primary' }],
+    tasks: [{ id: 't1', subject: 'work', assignee: 'worker', status: taskStatus, dependencies: [], attempt: 1, attemptId: 'a1', output: taskStatus === 'completed' ? 'finished' : undefined, createdAt: 1, updatedAt: 1 }],
   })
   let setup
   const rootListeners = new Map()
@@ -144,6 +144,7 @@ async function fixture(t, { captainStatus = 'idle', fallback, captainOffline = f
     mailbox: () => readMailbox(stateRoot, 'team', 'captain'),
     unread: () => readUnreadMailbox(stateRoot, 'team', 'captain'),
     retry: (policy, code) => { const value = payload(policy, code); return retryHandler(value, () => memberError(value)) },
+    drainFailures: () => Promise.all(pendingFailures),
     terminal({ settle = true, turn = 1 } = {}) {
       pendingFailures.push(listeners.get('agent/error')?.({ agent: child, turn, step: 0, error: new LlmError(failure.message, failure.code) }))
       if (settle) settleSilently()
@@ -207,6 +208,65 @@ for (const captainStatus of ['idle', 'running']) {
   })
 }
 
+await test('task that completes while final failure waits for the lock gets a note only', async t => {
+  const h = await fixture(t)
+  let release
+  let locked
+  const ready = new Promise(resolve => { locked = resolve })
+  const hold = withTeamLock(`team:${h.stateRoot}:team`, async () => {
+    locked()
+    await new Promise(resolve => { release = resolve })
+    const team = await h.state()
+    team.tasks[0].status = 'completed'
+    team.tasks[0].output = 'finished before failure lock'
+    await writeTeam(h.stateRoot, team)
+  })
+  await ready
+  h.terminal()
+  release()
+  await hold
+  await h.drainFailures()
+  const task = (await h.state()).tasks[0]
+  assert.equal(task.status, 'completed')
+  assert.equal(task.output, 'finished before failure lock')
+  assert.equal((await h.mailbox()).length, 1)
+  assert.match((await h.mailbox())[0].content, /had already closed as completed/u)
+})
+
+await test('settled task failure adds one captain note and preserves the task record', async t => {
+  const h = await fixture(t, { taskStatus: 'completed' })
+  h.terminal()
+  await eventually(async () => (await h.mailbox()).length === 1)
+  const task = (await h.state()).tasks[0]
+  assert.equal(task.status, 'completed')
+  assert.equal(task.output, 'finished')
+  assert.match((await h.mailbox())[0].content, /had already closed as completed/u)
+  assert.match((await h.mailbox())[0].content, /STREAM_CLOSED/u)
+  assert.equal(h.steers.length, 1)
+})
+
+await test('settled error queued before newer work is ignored', async t => {
+  const h = await fixture(t, { taskStatus: 'completed', memberStatus: 'working' })
+  let release
+  let locked
+  const ready = new Promise(resolve => { locked = resolve })
+  const hold = withTeamLock(`team:${h.stateRoot}:team`, async () => {
+    locked()
+    await new Promise(resolve => { release = resolve })
+    const team = await h.state()
+    team.tasks.push({ id: 't2', subject: 'newer work', assignee: 'worker', status: 'in_progress', dependencies: [], attempt: 1, attemptId: 'a2', createdAt: 2, updatedAt: 2 })
+    await writeTeam(h.stateRoot, team)
+  })
+  await ready
+  h.terminal()
+  release()
+  await Promise.all([hold, h.drainFailures()])
+  const state = await h.state()
+  assert.equal(state.tasks[0].status, 'completed')
+  assert.equal(state.tasks[1].attemptId, 'a2')
+  assert.equal((await h.mailbox()).length, 0)
+})
+
 await test('report a final error immediately but do not dispatch while the driver is still running', async t => {
   const h = await fixture(t)
   await appendMailbox(h.stateRoot, 'team', 'worker', createMessage('captain', 'worker', 'status please'))
@@ -251,4 +311,24 @@ await test('a queued error cannot fail a newer attempt created before it gets th
   assert.equal((await h.state()).tasks[0].status, 'in_progress')
   assert.equal((await h.state()).tasks[0].attemptId, 'a2')
   assert.equal((await h.mailbox()).length, 0)
+})
+
+await test('settled failure preserves removed member state and sends no stale report', async t => {
+  const h = await fixture(t, { taskStatus: 'completed', memberStatus: 'removed' })
+  h.terminal()
+  await h.drainFailures()
+  assert.equal((await h.state()).members[0].status, 'removed')
+  assert.equal((await h.mailbox()).length, 0)
+})
+await test('settled task selection uses activity time rather than task creation order', async t => {
+  const h = await fixture(t, { taskStatus: 'completed' })
+  const team = await h.state()
+  team.tasks[0].updatedAt = 100
+  team.tasks.push({ ...team.tasks[0], id: 'older-execution', subject: 'older execution', updatedAt: 10, attemptId: 'older' })
+  await writeTeam(h.stateRoot, team)
+  h.terminal()
+  await h.drainFailures()
+  const mail = await h.mailbox()
+  assert.equal(mail.length, 1)
+  assert.match(mail[0].content, /Task t1 /)
 })

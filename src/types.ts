@@ -64,6 +64,27 @@ export interface ReviewFinding {
   resolved?: boolean
 }
 
+export interface ArtifactDigest {
+  path: string
+  present: boolean
+  sha256?: string
+  size?: number
+  mtimeMs?: number
+  unreadable?: boolean
+  reason?: string
+}
+
+export interface ArtifactScopeGap {
+  pattern: string
+  reason: string
+}
+
+export interface ArtifactSnapshot {
+  at: number
+  artifacts: ArtifactDigest[]
+  gaps?: ArtifactScopeGap[]
+}
+
 /** One acceptance criterion result recorded at completion. */
 export interface AcceptanceResult {
   criterion: string
@@ -170,6 +191,13 @@ export interface TeamTask {
   supplementalEvidence?: TaskEvidence[]
   reviewedTaskId?: string
   reviewedAttempt?: number
+  reviewedArtifacts?: ArtifactDigest[]
+  reviewedGaps?: ArtifactScopeGap[]
+  reviewedScope?: string[]
+  reviewedDuringDrift?: string[]
+  verdictStartSnapshot?: ArtifactSnapshot
+  contractSnapshot?: ArtifactSnapshot
+  findingSourceTaskIds?: string[]
   /** Repair source: the implementation / previous successful artifact. */
   sourceTaskId?: string
   sourceFindingIds?: string[]
